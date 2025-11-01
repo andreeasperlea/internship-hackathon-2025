@@ -10,6 +10,24 @@ from pathlib import Path
 CACHE_DIR = Path(".ai_review_cache")
 CACHE_DIR.mkdir(exist_ok=True)
 
+import requests, os
+
+def check_ollama_connection():
+    url = os.getenv("OLLAMA_API_URL", "http://localhost:11434/api/generate")
+    try:
+        resp = requests.post(url, json={"model":"llama3.1:8b","prompt":"ping","stream":False}, timeout=10)
+        if resp.status_code == 200:
+            print(f"🔌 Connected to Ollama at {url}")
+        else:
+            print(f"⚠️ Ollama responded with status {resp.status_code}")
+    except requests.exceptions.Timeout:
+        print(f"❌ Ollama at {url} timed out.")
+        raise SystemExit(1)
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Could not reach Ollama: {e}")
+        raise SystemExit(1)
+
+
 def cache_key(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
@@ -153,6 +171,14 @@ def main():
         }
         Path("ai_review.sarif").write_text(json.dumps(sarif, indent=2))
         print("💾 Wrote ai_review.sarif")
+    
+    if Path("AI_REVIEW.md").exists():
+        print("\n=== 💬 AI Review Feedback Summary ===\n")
+        lines = Path("AI_REVIEW.md").read_text().splitlines()
+        for line in lines:
+            if line.strip().startswith("- **"):
+                print(line)
+        print("\n📄 Full report saved to AI_REVIEW.md\n")
 
     stats = tracker.summary()
     print(f"⏱  Done. Elapsed≈{stats['elapsed_sec']}s")
