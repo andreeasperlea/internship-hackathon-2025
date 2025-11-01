@@ -113,30 +113,25 @@ def safe_parse_json(raw: str):
             Path(".ai_review_cache/last_failed_response.txt").write_text(raw)
             return {"summary": "parse_error", "findings": []}
 
-# --- Main review function ---
 def review_hunks(hunks, rules, max_findings=MAX_FINDINGS):
-    """Send each diff hunk to Ollama for review."""
+    """Send all diff hunks in one batched Ollama request for faster review."""
+    ensure_ollama_online(OLLAMA_API_URL)
+
+    # Combine all hunks into one review payload
+    joined_hunks = "\n\n---\n\n".join(
+        f"File: {h['file']}\n" + "\n".join(h["raw"]) for h in hunks
+    )
     guidelines = "\n".join(f"- {r['id']}: {r['description']}" for r in rules)
-    all_findings, summaries, efforts = [], [], []
 
-    for h in hunks:
-        prompt = PROMPT_TEMPLATE.format(
-            guidelines=guidelines,
-            hunk="\n".join(h["raw"])
-        )
-        raw = ask_ollama(prompt).strip()
-        data = safe_parse_json(raw)
+    prompt = PROMPT_TEMPLATE.format(guidelines=guidelines, hunk=joined_hunks)
+    print("🚀 Sending combined diff to Ollama for review...")
 
-        summaries.append(data.get("summary", ""))
-        efforts.append(data.get("effort", "S"))
-        for f in data.get("findings", []):
-            f.setdefault("file", h["file"])
-            all_findings.append(f)
-        if len(all_findings) >= max_findings:
-            break
+    raw = ask_ollama(prompt).strip()
+    data = safe_parse_json(raw)
 
+    # Prepare final report
     return {
-        "summary": " | ".join(x for x in summaries if x).strip(),
-        "effort": max(efforts, key=lambda e: "XS S M L".split().index(e)) if efforts else "S",
-        "findings": all_findings[:max_findings],
+        "summary": data.get("summary", "Batch review summary"),
+        "effort": data.get("effort", "S"),
+        "findings": data.get("findings", [])[:max_findings],
     }
