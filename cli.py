@@ -317,17 +317,17 @@ def handle_feedback_show(feedback_tracker: FeedbackTracker, args) -> int:
     
     # Display finding details
     status_colors = {
-        "open": "blue", "resolve": "green", 
+        "open": "blue", "resolved": "green", 
         "false_positive": "orange1", "will_fix_later": "yellow"
     }
-    color = status_colors.get(finding_data["status"], "white")
+    color = status_colors.get(finding_data.status, "white")
     
     finding_panel = Panel(
-        f"[bold]File:[/bold] {finding_data['file']}:{finding_data['line']}\n"
-        f"[bold]Rule:[/bold] {finding_data['rule']}\n"
-        f"[bold]Title:[/bold] {finding_data['title']}\n"
-        f"[bold]Status:[/bold] [{color}]{finding_data['status'].replace('_', ' ').title()}[/{color}]\n"
-        f"[bold]Created:[/bold] {finding_data['created'][:19]}",
+        f"[bold]File:[/bold] {finding_data.file}:{finding_data.line}\n"
+        f"[bold]Rule:[/bold] {finding_data.rule}\n"
+        f"[bold]Title:[/bold] {finding_data.title or 'No title'}\n"
+        f"[bold]Status:[/bold] [{color}]{finding_data.status.replace('_', ' ').title()}[/{color}]\n"
+        f"[bold]Created:[/bold] {finding_data.created_at[:19]}",
         title=f"[bold]Finding {args.finding_id}[/bold]",
         border_style=color,
         box=box.ROUNDED
@@ -335,20 +335,20 @@ def handle_feedback_show(feedback_tracker: FeedbackTracker, args) -> int:
     console.print(finding_panel)
     
     # Display discussion
-    if finding_data["discussion"]:
-        console.print(f"\n[bold magenta]💬 Discussion ({len(finding_data['discussion'])} messages)[/bold magenta]")
+    if finding_data.entries:
+        console.print(f"\n[bold magenta]💬 Discussion ({len(finding_data.entries)} messages)[/bold magenta]")
         
-        for i, entry in enumerate(finding_data["discussion"], 1):
-            timestamp = entry["timestamp"][:19].replace("T", " ")
+        for i, entry in enumerate(finding_data.entries, 1):
+            timestamp = entry.timestamp[:19].replace("T", " ")
             action_icons = {
-                "comment": "💬", "reply": "↳", "resolve": "✅",
-                "false_positive": "🚫", "will_fix_later": "⏳"
+                "comment": "💬", "reply": "↳", "resolve": "✅", "status_change": "🔄",
+                "false_positive": "🚫", "will_fix_later": "⏳", "created": "📝"
             }
-            icon = action_icons.get(entry["action"], "📝")
+            icon = action_icons.get(entry.action, "📝")
             
             message_panel = Panel(
-                f"[dim]{timestamp}[/dim]\n{entry['message']}",
-                title=f"{icon} {entry['author']} - {entry['action']}",
+                f"[dim]{timestamp}[/dim]\n{entry.message}",
+                title=f"{icon} {entry.author} - {entry.action}",
                 border_style="dim",
                 box=box.ROUNDED
             )
@@ -428,7 +428,8 @@ def handle_feedback_stats(feedback_tracker: FeedbackTracker, args) -> int:
     # Overview panel
     overview_panel = Panel(
         f"[bold]Total Findings:[/bold] {stats['total_findings']}\n"
-        f"[bold]Recent Activity (24h):[/bold] {stats['recent_activity']} actions",
+        f"[bold]Total Comments:[/bold] {stats['total_comments']}\n"
+        f"[bold]Resolution Rate:[/bold] {stats['resolution_rate']}%",
         title="[bold blue]📊 Feedback Overview[/bold blue]",
         border_style="blue",
         box=box.ROUNDED
@@ -457,8 +458,8 @@ def handle_feedback_stats(feedback_tracker: FeedbackTracker, args) -> int:
         console.print("\n[bold magenta]📋 Status Breakdown[/bold magenta]")
         console.print(status_table)
     
-    # Author activity
-    if stats['by_author']:
+    # Author activity (disabled for now)
+    if False:  # stats.get('by_author'):
         author_table = Table(show_header=True, header_style="bold green", box=box.ROUNDED)
         author_table.add_column("Author", style="bold")
         author_table.add_column("Actions", style="cyan", justify="right")
@@ -693,10 +694,18 @@ def main():
             md.append("## mypy\n```\n" + out["mypy"] + "\n```\n")
         md.append("## Findings\n")
         for f in findings:
-            md.append(f"- **{f['severity'].upper()}** [{f.get('rule','GEN')}] "
-                      f"{f['file']}:{f.get('line','?')} — {f['title']}\n"
-                      f"  - {f['description']}\n"
-                      f"  - **Fix**: {f['recommendation']}\n")
+            severity = f.get('severity', 'info').upper()
+            rule = f.get('rule', 'GEN')
+            file_location = f.get('file', '?')
+            line_num = f.get('line', '?')
+            title = f.get('title', 'Unknown issue')
+            description = f.get('description', 'No description available')
+            recommendation = f.get('recommendation', 'No recommendation provided')
+            
+            md.append(f"- **{severity}** [{rule}] "
+                      f"{file_location}:{line_num} — {title}\n"
+                      f"  - {description}\n"
+                      f"  - **Fix**: {recommendation}\n")
         Path("AI_REVIEW.md").write_text("\n".join(md))
         console.print("[bold green]💾 Wrote[/bold green] [cyan]AI_REVIEW.md[/cyan]")
 

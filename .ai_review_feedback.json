@@ -1,0 +1,68 @@
+{
+  "021822a07fb7": {
+    "finding_id": "021822a07fb7",
+    "file": "",
+    "line": 11,
+    "rule": "security-issue",
+    "title": "",
+    "status": "resolved",
+    "entries": [
+      {
+        "timestamp": "2025-11-01T15:54:15.010373",
+        "author": "system",
+        "action": "created",
+        "message": "Finding created: Unknown issue",
+        "status": null
+      },
+      {
+        "timestamp": "2025-11-01T16:00:14.485863",
+        "author": null,
+        "action": "comment",
+        "message": "This is a security vulnerability - subprocess with shell=True detected",
+        "status": null
+      },
+      {
+        "timestamp": "2025-11-01T16:00:21.509250",
+        "author": null,
+        "action": "comment",
+        "message": "Started working on this - will replace with subprocess.run(['command']) format",
+        "status": null
+      },
+      {
+        "timestamp": "2025-11-01T16:00:28.348301",
+        "author": null,
+        "action": "status_change",
+        "message": "Status changed to resolved: Fixed by removing shell=True parameter",
+        "status": "resolved"
+      }
+    ],
+    "created_at": "2025-11-01T15:54:15.010373",
+    "updated_at": "2025-11-01T16:00:28.348301"
+  },
+  "8bee95067781": {
+    "finding_id": "8bee95067781",
+    "file": "",
+    "line": 26,
+    "rule": "style-issue",
+    "title": "",
+    "status": "will_fix_later",
+    "entries": [
+      {
+        "timestamp": "2025-11-01T15:54:15.011244",
+        "author": "system",
+        "action": "created",
+        "message": "Finding created: Unknown issue",
+        "status": null
+      },
+      {
+        "timestamp": "2025-11-01T16:00:38.354355",
+        "author": null,
+        "action": "status_change",
+        "message": "Status changed to will_fix_later: Long variable names - will refactor in next sprint",
+        "status": "will_fix_later"
+      }
+    ],
+    "created_at": "2025-11-01T15:54:15.011244",
+    "updated_at": "2025-11-01T16:00:38.354355"
+  }
+}
