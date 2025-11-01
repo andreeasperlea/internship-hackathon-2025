@@ -1,0 +1,1261 @@
+{
+  "chunks": [
+    {
+      "type": "imports",
+      "file": "review.py",
+      "content": "File review.py imports: os, re, json, requests, yaml, socket, urllib.parse, pathlib.Path",
+      "code": "import os\nimport re\nimport json\nimport requests\nimport yaml",
+      "metadata": {
+        "file": "review.py",
+        "type": "imports",
+        "line": 1
+      }
+    },
+    {
+      "type": "function",
+      "file": "review.py",
+      "content": "Function ensure_ollama_online in review.py:\ndef ensure_ollama_online(url: str, timeout: float = 1.5):\n    \"\"\"Exit fast if the Ollama server (remote or local) is offline or unreachable.\"\"\"\n    parsed = urllib.parse.urlparse(url)\n    host = parsed.hostname or \"localhost\"\n    port = parsed.port or 11434\n\n    try:\n        with socket.create_connection((host, port), timeout=timeout):\n            print(f\"\ud83d\udd0c Connected to Ollama at {url}\")\n         ...",
+      "code": "def ensure_ollama_online(url: str, timeout: float = 1.5):\n    \"\"\"Exit fast if the Ollama server (remote or local) is offline or unreachable.\"\"\"\n    parsed = urllib.parse.urlparse(url)\n    host = parsed.hostname or \"localhost\"\n    port = parsed.port or 11434\n\n    try:\n        with socket.create_connection((host, port), timeout=timeout):\n            print(f\"\ud83d\udd0c Connected to Ollama at {url}\")\n            return True\n    except Exception:\n        print(f\"\u274c Ollama server not reachable at {host}:{port}\")\n        print(\"\ud83d\udca4 Skipping AI review (server offline).\")\n        raise SystemExit(0)",
+      "metadata": {
+        "file": "review.py",
+        "type": "function",
+        "name": "ensure_ollama_online",
+        "line": 28,
+        "args": [
+          "url",
+          "timeout"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "review.py",
+      "content": "Function ask_ollama in review.py:\ndef ask_ollama(prompt: str) -> str:\n    \"\"\"Call the Ollama API (remote or local).\"\"\"\n    ensure_ollama_online(OLLAMA_API_URL)\n\n    payload = {\"model\": OLLAMA_MODEL, \"prompt\": prompt, \"stream\": False}\n    try:\n        resp = requests.post(\n            OLLAMA_API_URL,\n            json=payload,\n            timeout=(3, 60)  # (connect_timeout, read_timeout)\n        )\n        resp.raise_for_status()\n  ...",
+      "code": "def ask_ollama(prompt: str) -> str:\n    \"\"\"Call the Ollama API (remote or local).\"\"\"\n    ensure_ollama_online(OLLAMA_API_URL)\n\n    payload = {\"model\": OLLAMA_MODEL, \"prompt\": prompt, \"stream\": False}\n    try:\n        resp = requests.post(\n            OLLAMA_API_URL,\n            json=payload,\n            timeout=(3, 60)  # (connect_timeout, read_timeout)\n        )\n        resp.raise_for_status()\n        data = resp.json()\n        return data.get(\"response\") or data.get(\"text\") or str(data)\n    except requests.exceptions.ConnectTimeout:\n        print(\"\u26a0\ufe0f  Connection timed out while contacting Ollama.\")\n        raise SystemExit(0)\n    except requests.exceptions.RequestException as e:\n        print(f\"\u26a0\ufe0f  Ollama request failed: {e}\")\n        raise SystemExit(0)",
+      "metadata": {
+        "file": "review.py",
+        "type": "function",
+        "name": "ask_ollama",
+        "line": 136,
+        "args": [
+          "prompt"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "review.py",
+      "content": "Function safe_parse_json in review.py:\ndef safe_parse_json(raw: str):\n    \"\"\"Clean and parse possibly malformed JSON from LLM output.\"\"\"\n    # Remove control characters\n    cleaned = re.sub(r'[\\x00-\\x1F\\x7F]', '', raw)\n    \n    # Find JSON boundaries\n    start, end = cleaned.find(\"{\"), cleaned.rfind(\"}\")\n    if start != -1 and end != -1:\n        cleaned = cleaned[start:end+1]\n    else:\n        # No JSON found - save for debugging and r...",
+      "code": "def safe_parse_json(raw: str):\n    \"\"\"Clean and parse possibly malformed JSON from LLM output.\"\"\"\n    # Remove control characters\n    cleaned = re.sub(r'[\\x00-\\x1F\\x7F]', '', raw)\n    \n    # Find JSON boundaries\n    start, end = cleaned.find(\"{\"), cleaned.rfind(\"}\")\n    if start != -1 and end != -1:\n        cleaned = cleaned[start:end+1]\n    else:\n        # No JSON found - save for debugging and return fallback\n        Path(\".ai_review_cache/last_failed_response.txt\").write_text(raw)\n        print(f\"\u26a0\ufe0f  Warning: LLM returned non-JSON response. Saved to .ai_review_cache/last_failed_response.txt\")\n        return {\"summary\": \"LLM returned non-JSON response - check prompt template\", \"effort\": \"XS\", \"findings\": []}\n    \n    # Try parsing JSON\n    try:\n        return json.loads(cleaned)\n    except json.JSONDecodeError as e:\n        # Try fixing common issues\n        fixed = cleaned.replace(\"'\", '\"')  # Single to double quotes\n        fixed = re.sub(r',(\\s*[}\\]])', r'\\1', fixed)  # Remove trailing commas\n        \n        try:\n            return json.loads(fixed)\n        except json.JSONDecodeError:\n            # Save failed response for debugging\n            Path(\".ai_review_cache/last_failed_response.txt\").write_text(raw)\n            print(f\"\u26a0\ufe0f  Warning: Could not parse LLM JSON response. Error: {e}\")\n            print(f\"\ud83d\udcdd Raw response saved to .ai_review_cache/last_failed_response.txt\")\n            \n            return {\n                \"summary\": f\"JSON parse error: {str(e)[:100]}...\",\n                \"effort\": \"XS\", \n                \"findings\": [{\n                    \"file\": \"unknown\",\n                    \"line\": 1,\n                    \"rule\": \"SYSTEM\",\n                    \"severity\": \"warn\",\n                    \"title\": \"AI response parsing failed\",\n                    \"description\": f\"The LLM returned invalid JSON. Error: {e}\",\n                    \"recommendation\": \"Check Ollama model compatibility and prompt template\",\n                    \"auto_fix_patch\": \"\"\n                }]\n            }",
+      "metadata": {
+        "file": "review.py",
+        "type": "function",
+        "name": "safe_parse_json",
+        "line": 158,
+        "args": [
+          "raw"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "review.py",
+      "content": "Function review_hunks in review.py:\ndef review_hunks(hunks, rules, max_findings=MAX_FINDINGS):\n    \"\"\"Send all diff hunks in one batched Ollama request for faster review.\"\"\"\n    ensure_ollama_online(OLLAMA_API_URL)\n\n    # Combine all hunks into one review payload\n    joined_hunks = \"\\n\\n---\\n\\n\".join(\n        f\"File: {h['file']}\\n\" + \"\\n\".join(h[\"raw\"]) for h in hunks\n    )\n    guidelines = \"\\n\".join(f\"- {r['id']}: {r['description']...",
+      "code": "def review_hunks(hunks, rules, max_findings=MAX_FINDINGS):\n    \"\"\"Send all diff hunks in one batched Ollama request for faster review.\"\"\"\n    ensure_ollama_online(OLLAMA_API_URL)\n\n    # Combine all hunks into one review payload\n    joined_hunks = \"\\n\\n---\\n\\n\".join(\n        f\"File: {h['file']}\\n\" + \"\\n\".join(h[\"raw\"]) for h in hunks\n    )\n    guidelines = \"\\n\".join(f\"- {r['id']}: {r['description']}\" for r in rules)\n\n    prompt = PROMPT_TEMPLATE.format(guidelines=guidelines, hunk=joined_hunks)\n    print(\"\ud83d\ude80 Sending combined diff to Ollama for review...\")\n\n    raw = ask_ollama(prompt).strip()\n    data = safe_parse_json(raw)\n    \n    # If parsing failed and we got a system error, try a simpler approach\n    if data.get(\"summary\", \"\").startswith((\"JSON parse error\", \"LLM returned non-JSON\")):\n        print(\"\ud83d\udd04 Retrying with simplified prompt...\")\n        simple_prompt = f\"\"\"Respond with valid JSON only. Review this code diff and return:\n{{\"summary\": \"brief description\", \"effort\": \"S\", \"findings\": []}}\n\nDiff:\n{joined_hunks[:2000]}  \n\nJSON:\"\"\"\n        \n        raw_retry = ask_ollama(simple_prompt).strip()\n        retry_data = safe_parse_json(raw_retry)\n        \n        # Use retry result if it's better, otherwise keep original\n        if not retry_data.get(\"summary\", \"\").startswith((\"JSON parse error\", \"LLM returned non-JSON\")):\n            data = retry_data\n        else:\n            print(\"\u26a0\ufe0f  Retry also failed - using fallback summary\")\n\n    # Prepare final report\n    return {\n        \"summary\": data.get(\"summary\", \"Review completed with parsing issues\"),\n        \"effort\": data.get(\"effort\", \"S\"),\n        \"findings\": data.get(\"findings\", [])[:max_findings],\n    }",
+      "metadata": {
+        "file": "review.py",
+        "type": "function",
+        "name": "review_hunks",
+        "line": 204,
+        "args": [
+          "hunks",
+          "rules",
+          "max_findings"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "review.py",
+      "content": "Function review_hunks_with_context in review.py:\ndef review_hunks_with_context(hunks, rules, codebase_context, max_findings=MAX_FINDINGS):\n    \"\"\"Enhanced review with codebase context for better suggestions.\"\"\"\n    ensure_ollama_online(OLLAMA_API_URL)\n\n    # Format codebase context for prompt\n    context_sections = []\n    for i, ctx in enumerate(codebase_context, 1):\n        context_sections.append(\n            f\"[{i}] {ctx['type'].upper()} - {P...",
+      "code": "def review_hunks_with_context(hunks, rules, codebase_context, max_findings=MAX_FINDINGS):\n    \"\"\"Enhanced review with codebase context for better suggestions.\"\"\"\n    ensure_ollama_online(OLLAMA_API_URL)\n\n    # Format codebase context for prompt\n    context_sections = []\n    for i, ctx in enumerate(codebase_context, 1):\n        context_sections.append(\n            f\"[{i}] {ctx['type'].upper()} - {Path(ctx['file']).name} ({ctx.get('name', 'N/A')}):\\n\"\n            f\"Location: {ctx['file']}:{ctx['line']}\\n\"\n            f\"Similarity: {ctx['similarity']:.2f}\\n\"\n            f\"Code:\\n{ctx['content']}\\n\"\n        )\n    \n    context_text = \"\\n\".join(context_sections) if context_sections else \"No relevant context found.\"\n    \n    # Combine all hunks\n    joined_hunks = \"\\n\\n---\\n\\n\".join(\n        f\"File: {h['file']}\\n\" + \"\\n\".join(h[\"raw\"]) for h in hunks\n    )\n    \n    guidelines = \"\\n\".join(f\"- {r['id']}: {r['description']}\" for r in rules)\n    \n    prompt = CONTEXTUAL_PROMPT_TEMPLATE.format(\n        codebase_context=context_text,\n        guidelines=guidelines, \n        hunk=joined_hunks\n    )\n    \n    print(\"\ud83e\udde0 Sending contextual review to Ollama (with codebase awareness)...\")\n    \n    raw = ask_ollama(prompt).strip()\n    data = safe_parse_json(raw)\n    \n    # If parsing failed, fall back to standard review\n    if data.get(\"summary\", \"\").startswith((\"JSON parse error\", \"LLM returned non-JSON\")):\n        print(\"\ud83d\udd04 Contextual review failed, falling back to standard review...\")\n        return review_hunks(hunks, rules, max_findings)\n    \n    # Enhance findings with context information\n    for finding in data.get(\"findings\", []):\n        if not finding.get(\"rule\"):\n            finding[\"rule\"] = \"CONSISTENCY\"\n        \n        # Add context hint to description if not already contextual\n        if \"existing\" not in finding.get(\"description\", \"\").lower():\n            original_desc = finding.get(\"description\", \"\")\n            finding[\"description\"] = f\"{original_desc} (Consider existing codebase patterns.)\"\n    \n    return {\n        \"summary\": data.get(\"summary\", \"Review completed with contextual analysis\"),\n        \"effort\": data.get(\"effort\", \"S\"),\n        \"findings\": data.get(\"findings\", [])[:max_findings],\n        \"context_used\": len(codebase_context)\n    }",
+      "metadata": {
+        "file": "review.py",
+        "type": "function",
+        "name": "review_hunks_with_context",
+        "line": 247,
+        "args": [
+          "hunks",
+          "rules",
+          "codebase_context",
+          "max_findings"
+        ]
+      }
+    },
+    {
+      "type": "imports",
+      "file": "cost.py",
+      "content": "File cost.py imports: time",
+      "code": "import time",
+      "metadata": {
+        "file": "cost.py",
+        "type": "imports",
+        "line": 1
+      }
+    },
+    {
+      "type": "class",
+      "file": "cost.py",
+      "content": "Class CostTracker in cost.py:\nclass CostTracker:\n    def __init__(self):\n        self.tokens_in = 0\n        self.tokens_out = 0\n        self.start = time.time()\n\n    def add_io(self, prompt_len, resp_len):\n        self.tokens_in += prompt_len\n        self.tokens_out += resp_len\n\n    def summary(self):\n        elapsed = time.time()-self.start\n        return {\n            \"elapsed_sec\": round(elapsed,2),\n            \"chars_in\": ...",
+      "code": "class CostTracker:\n    def __init__(self):\n        self.tokens_in = 0\n        self.tokens_out = 0\n        self.start = time.time()\n\n    def add_io(self, prompt_len, resp_len):\n        self.tokens_in += prompt_len\n        self.tokens_out += resp_len\n\n    def summary(self):\n        elapsed = time.time()-self.start\n        return {\n            \"elapsed_sec\": round(elapsed,2),\n            \"chars_in\": self.tokens_in,\n            \"chars_out\": self.tokens_out\n        }",
+      "metadata": {
+        "file": "cost.py",
+        "type": "class",
+        "name": "CostTracker",
+        "line": 3
+      }
+    },
+    {
+      "type": "function",
+      "file": "cost.py",
+      "content": "Function __init__ in cost.py:\n    def __init__(self):\n        self.tokens_in = 0\n        self.tokens_out = 0\n        self.start = time.time()...",
+      "code": "    def __init__(self):\n        self.tokens_in = 0\n        self.tokens_out = 0\n        self.start = time.time()",
+      "metadata": {
+        "file": "cost.py",
+        "type": "function",
+        "name": "__init__",
+        "line": 4,
+        "args": [
+          "self"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "cost.py",
+      "content": "Function add_io in cost.py:\n    def add_io(self, prompt_len, resp_len):\n        self.tokens_in += prompt_len\n        self.tokens_out += resp_len...",
+      "code": "    def add_io(self, prompt_len, resp_len):\n        self.tokens_in += prompt_len\n        self.tokens_out += resp_len",
+      "metadata": {
+        "file": "cost.py",
+        "type": "function",
+        "name": "add_io",
+        "line": 9,
+        "args": [
+          "self",
+          "prompt_len",
+          "resp_len"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "cost.py",
+      "content": "Function summary in cost.py:\n    def summary(self):\n        elapsed = time.time()-self.start\n        return {\n            \"elapsed_sec\": round(elapsed,2),\n            \"chars_in\": self.tokens_in,\n            \"chars_out\": self.tokens_out\n        }...",
+      "code": "    def summary(self):\n        elapsed = time.time()-self.start\n        return {\n            \"elapsed_sec\": round(elapsed,2),\n            \"chars_in\": self.tokens_in,\n            \"chars_out\": self.tokens_out\n        }",
+      "metadata": {
+        "file": "cost.py",
+        "type": "function",
+        "name": "summary",
+        "line": 13,
+        "args": [
+          "self"
+        ]
+      }
+    },
+    {
+      "type": "file_overview",
+      "file": "test_review.py",
+      "content": "File test_review.py overview:\nimport subprocess\\nsubprocess.run(\"ls\")\n...",
+      "code": "import subprocess\\nsubprocess.run(\"ls\")\n",
+      "metadata": {
+        "file": "test_review.py",
+        "type": "overview",
+        "line": 1
+      }
+    },
+    {
+      "type": "imports",
+      "file": "patcher.py",
+      "content": "File patcher.py imports: subprocess, tempfile",
+      "code": "import subprocess\nimport tempfile",
+      "metadata": {
+        "file": "patcher.py",
+        "type": "imports",
+        "line": 1
+      }
+    },
+    {
+      "type": "function",
+      "file": "patcher.py",
+      "content": "Function apply_unified_patch in patcher.py:\ndef apply_unified_patch(patch_text: str) -> bool:\n    if not patch_text or \"@@ \" not in patch_text:\n        return False\n    with tempfile.NamedTemporaryFile(\"w\", delete=False, suffix=\".patch\") as f:\n        f.write(patch_text.strip() + \"\\n\")\n        path = f.name\n    try:\n        subprocess.run([\"git\",\"apply\",\"--index\", path], check=True)\n        return True\n    except subprocess.CalledProcessErr...",
+      "code": "def apply_unified_patch(patch_text: str) -> bool:\n    if not patch_text or \"@@ \" not in patch_text:\n        return False\n    with tempfile.NamedTemporaryFile(\"w\", delete=False, suffix=\".patch\") as f:\n        f.write(patch_text.strip() + \"\\n\")\n        path = f.name\n    try:\n        subprocess.run([\"git\",\"apply\",\"--index\", path], check=True)\n        return True\n    except subprocess.CalledProcessError:\n        return False",
+      "metadata": {
+        "file": "patcher.py",
+        "type": "function",
+        "name": "apply_unified_patch",
+        "line": 3,
+        "args": [
+          "patch_text"
+        ]
+      }
+    },
+    {
+      "type": "imports",
+      "file": "cli.py",
+      "content": "File cli.py imports: argparse, os, json, hashlib, diff_utils.get_staged_diff, diff_utils.split_into_hunks, review.review_hunks, review.review_hunks_with_context, patcher.apply_unified_patch, linters.run_ruff",
+      "code": "import argparse\nimport os\nimport json\nimport hashlib\nimport diff_utils.get_staged_diff",
+      "metadata": {
+        "file": "cli.py",
+        "type": "imports",
+        "line": 1
+      }
+    },
+    {
+      "type": "function",
+      "file": "cli.py",
+      "content": "Function check_ollama_connection in cli.py:\ndef check_ollama_connection():\n    url = os.getenv(\"OLLAMA_API_URL\", \"http://localhost:11434/api/generate\")\n    try:\n        resp = requests.post(url, json={\"model\":\"llama3.1:8b\",\"prompt\":\"ping\",\"stream\":False}, timeout=10)\n        if resp.status_code == 200:\n            console.print(f\"[bold green]\ud83d\udd0c Connected to Ollama[/bold green] at [cyan]{url}[/cyan]\")\n        else:\n            console.print(f...",
+      "code": "def check_ollama_connection():\n    url = os.getenv(\"OLLAMA_API_URL\", \"http://localhost:11434/api/generate\")\n    try:\n        resp = requests.post(url, json={\"model\":\"llama3.1:8b\",\"prompt\":\"ping\",\"stream\":False}, timeout=10)\n        if resp.status_code == 200:\n            console.print(f\"[bold green]\ud83d\udd0c Connected to Ollama[/bold green] at [cyan]{url}[/cyan]\")\n        else:\n            console.print(f\"[bold yellow]\u26a0\ufe0f Ollama responded with status {resp.status_code}[/bold yellow]\")\n    except requests.exceptions.Timeout:\n        console.print(f\"[bold red]\u274c Ollama at {url} timed out.[/bold red]\")\n        raise SystemExit(1)\n    except requests.exceptions.RequestException as e:\n        console.print(f\"[bold red]\u274c Could not reach Ollama: {e}[/bold red]\")\n        raise SystemExit(1)",
+      "metadata": {
+        "file": "cli.py",
+        "type": "function",
+        "name": "check_ollama_connection",
+        "line": 31,
+        "args": []
+      }
+    },
+    {
+      "type": "function",
+      "file": "cli.py",
+      "content": "Function cache_key in cli.py:\ndef cache_key(text: str) -> str:\n    return hashlib.sha256(text.encode()).hexdigest()...",
+      "code": "def cache_key(text: str) -> str:\n    return hashlib.sha256(text.encode()).hexdigest()",
+      "metadata": {
+        "file": "cli.py",
+        "type": "function",
+        "name": "cache_key",
+        "line": 47,
+        "args": [
+          "text"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "cli.py",
+      "content": "Function load_yaml in cli.py:\ndef load_yaml(p):\n    with open(p) as f:\n        return yaml.safe_load(f)...",
+      "code": "def load_yaml(p):\n    with open(p) as f:\n        return yaml.safe_load(f)",
+      "metadata": {
+        "file": "cli.py",
+        "type": "function",
+        "name": "load_yaml",
+        "line": 50,
+        "args": [
+          "p"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "cli.py",
+      "content": "Function show_startup_banner in cli.py:\ndef show_startup_banner(cfg, rules, formats, args=None):\n    \"\"\"Display beautiful startup information\"\"\"\n    console.print(\"\\n\")\n    console.print(Panel(\n        Text(\"\ud83e\udd16 RevAI - AI Code Review Assistant\", style=\"bold blue\", justify=\"center\"),\n        subtitle=\"[dim]Powered by Ollama LLM \u2022 See USER_MANUAL.md for full documentation[/dim]\",\n        border_style=\"blue\",\n        box=box.ROUNDED\n    ))\n...",
+      "code": "def show_startup_banner(cfg, rules, formats, args=None):\n    \"\"\"Display beautiful startup information\"\"\"\n    console.print(\"\\n\")\n    console.print(Panel(\n        Text(\"\ud83e\udd16 RevAI - AI Code Review Assistant\", style=\"bold blue\", justify=\"center\"),\n        subtitle=\"[dim]Powered by Ollama LLM \u2022 See USER_MANUAL.md for full documentation[/dim]\",\n        border_style=\"blue\",\n        box=box.ROUNDED\n    ))\n    \n    # Determine actual autofix status (CLI args override config)\n    autofix_enabled = cfg.get('enable_autofix', False)\n    autofix_source = \"config\"\n    \n    if args:\n        if args.apply_fixes:\n            autofix_enabled = True\n            autofix_source = \"--apply-fixes\"\n        elif args.no_apply_fixes:\n            autofix_enabled = False\n            autofix_source = \"--no-apply-fixes\"\n    \n    autofix_status = f\"[{'green]Enabled' if autofix_enabled else 'red]Disabled'}[/] [dim]({autofix_source})[/dim]\"\n    \n    # Configuration panel\n    config_info = [\n        f\"[bold green]\u2713[/bold green] Model: [cyan]{cfg.get('model_ollama', 'llama3.1:8b')}[/cyan]\",\n        f\"[bold green]\u2713[/bold green] Rules: [yellow]{len(rules)}[/yellow] guidelines loaded\",\n        f\"[bold green]\u2713[/bold green] Formats: [magenta]{', '.join(formats)}[/magenta]\",\n        f\"[bold green]\u2713[/bold green] Auto-fix: {autofix_status}\"\n    ]\n    \n    config_panel = Panel(\n        \"\\n\".join(config_info),\n        title=\"[bold]\ud83d\udd27 Configuration[/bold]\",\n        border_style=\"green\",\n        box=box.ROUNDED\n    )\n    console.print(config_panel)",
+      "metadata": {
+        "file": "cli.py",
+        "type": "function",
+        "name": "show_startup_banner",
+        "line": 54,
+        "args": [
+          "cfg",
+          "rules",
+          "formats",
+          "args"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "cli.py",
+      "content": "Function show_changes_tree in cli.py:\ndef show_changes_tree(hunks):\n    \"\"\"Display changed files in a tree structure\"\"\"\n    if not hunks:\n        return\n        \n    tree = Tree(\"[bold blue]\ud83d\udcc1 Changed Files[/bold blue]\")\n    \n    file_groups = {}\n    for hunk in hunks:\n        path_parts = hunk['file'].split('/')\n        if len(path_parts) > 1:\n            folder = path_parts[0]\n            if folder not in file_groups:\n               ...",
+      "code": "def show_changes_tree(hunks):\n    \"\"\"Display changed files in a tree structure\"\"\"\n    if not hunks:\n        return\n        \n    tree = Tree(\"[bold blue]\ud83d\udcc1 Changed Files[/bold blue]\")\n    \n    file_groups = {}\n    for hunk in hunks:\n        path_parts = hunk['file'].split('/')\n        if len(path_parts) > 1:\n            folder = path_parts[0]\n            if folder not in file_groups:\n                file_groups[folder] = []\n            file_groups[folder].append('/'.join(path_parts[1:]))\n        else:\n            if 'root' not in file_groups:\n                file_groups['root'] = []\n            file_groups['root'].append(hunk['file'])\n    \n    for folder, files in file_groups.items():\n        if folder == 'root':\n            for file in files:\n                tree.add(f\"[yellow]\ud83d\udcc4 {file}[/yellow]\")\n        else:\n            folder_branch = tree.add(f\"[blue]\ud83d\udcc2 {folder}[/blue]\")\n            for file in files:\n                folder_branch.add(f\"[yellow]\ud83d\udcc4 {file}[/yellow]\")\n    \n    console.print(tree)\n    console.print(\"\")",
+      "metadata": {
+        "file": "cli.py",
+        "type": "function",
+        "name": "show_changes_tree",
+        "line": 94,
+        "args": [
+          "hunks"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "cli.py",
+      "content": "Function display_review_summary in cli.py:\ndef display_review_summary(findings, summary, effort):\n    \"\"\"Display beautiful review summary with rich formatting\"\"\"\n    # Header panel\n    header_text = Text()\n    header_text.append(\"\ud83e\udd16 AI Code Review Complete\\n\", style=\"bold blue\")\n    if summary:\n        header_text.append(f\"Summary: {summary}\\n\", style=\"dim\")\n    header_text.append(f\"Effort Estimate: \", style=\"dim\")\n    \n    effort_colors = ...",
+      "code": "def display_review_summary(findings, summary, effort):\n    \"\"\"Display beautiful review summary with rich formatting\"\"\"\n    # Header panel\n    header_text = Text()\n    header_text.append(\"\ud83e\udd16 AI Code Review Complete\\n\", style=\"bold blue\")\n    if summary:\n        header_text.append(f\"Summary: {summary}\\n\", style=\"dim\")\n    header_text.append(f\"Effort Estimate: \", style=\"dim\")\n    \n    effort_colors = {\"XS\": \"green\", \"S\": \"green\", \"M\": \"yellow\", \"L\": \"red\", \"XL\": \"red\"}\n    header_text.append(f\"{effort}\", style=f\"bold {effort_colors.get(effort, 'blue')}\")\n    \n    header_panel = Panel(\n        header_text,\n        title=\"[bold]\ud83c\udfaf Results[/bold]\",\n        border_style=\"blue\",\n        box=box.ROUNDED\n    )\n    console.print(header_panel)\n    \n    if not findings:\n        console.print(Panel(\n            \"[bold green]\u2705 No significant findings detected![/bold green]\\n[dim]Your code looks good to go! \ud83d\ude80[/dim]\",\n            border_style=\"green\",\n            box=box.ROUNDED\n        ))\n        return\n    \n    # Findings table with feedback status\n    table = Table(show_header=True, header_style=\"bold magenta\", box=box.ROUNDED)\n    table.add_column(\"Severity\", style=\"bold\", width=12)\n    table.add_column(\"Rule\", style=\"cyan\", width=12)\n    table.add_column(\"Location\", style=\"yellow\", width=20)\n    table.add_column(\"Feedback\", style=\"bold\", width=12)\n    table.add_column(\"Issue\", style=\"white\")\n    \n    severity_icons = {\n        \"ERROR\": \"[bold red]\ud83d\udea8 ERROR[/bold red]\",\n        \"WARN\": \"[bold yellow]\u26a0\ufe0f  WARN[/bold yellow]\", \n        \"INFO\": \"[bold blue]\u2139\ufe0f  INFO[/bold blue]\"\n    }\n    \n    feedback_icons = {\n        \"open\": \"[bold blue]\ud83d\udd13 Open[/bold blue]\",\n        \"resolved\": \"[bold green]\u2705 Done[/bold green]\", \n        \"false_positive\": \"[bold orange1]\ud83d\udeab FP[/bold orange1]\",\n        \"will_fix_later\": \"[bold yellow]\u23f3 Later[/bold yellow]\",\n        \"acknowledged\": \"[bold cyan]\ud83d\udc41\ufe0f  Seen[/bold cyan]\",\n        \"in_progress\": \"[bold magenta]\ud83d\udd27 WIP[/bold magenta]\"\n    }\n    \n    for f in findings:\n        severity = f.get(\"severity\", \"\").upper()\n        feedback_status = f.get(\"feedback_status\", \"open\")\n        \n        table.add_row(\n            severity_icons.get(severity, \"[dim]\u2753 UNKNOWN[/dim]\"),\n            f\"[cyan]{f.get('rule', 'GEN')}[/cyan]\",\n            f\"{f.get('file', '?')}:{f.get('line', '?')}\",\n            feedback_icons.get(feedback_status, f\"[dim]{feedback_status}[/dim]\"),\n            f.get('title', 'No description')\n        )\n    \n    console.print(table)\n    console.print(\"\")",
+      "metadata": {
+        "file": "cli.py",
+        "type": "function",
+        "name": "display_review_summary",
+        "line": 126,
+        "args": [
+          "findings",
+          "summary",
+          "effort"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "cli.py",
+      "content": "Function display_detailed_findings in cli.py:\ndef display_detailed_findings(findings):\n    \"\"\"Display detailed findings with recommendations\"\"\"\n    if not findings:\n        return\n        \n    console.print(\"[bold magenta]\ud83d\udccb Detailed Findings & Recommendations[/bold magenta]\\n\")\n    \n    for i, f in enumerate(findings, 1):\n        severity = f.get(\"severity\", \"\").upper()\n        severity_colors = {\"ERROR\": \"red\", \"WARN\": \"yellow\", \"INFO\": \"blu...",
+      "code": "def display_detailed_findings(findings):\n    \"\"\"Display detailed findings with recommendations\"\"\"\n    if not findings:\n        return\n        \n    console.print(\"[bold magenta]\ud83d\udccb Detailed Findings & Recommendations[/bold magenta]\\n\")\n    \n    for i, f in enumerate(findings, 1):\n        severity = f.get(\"severity\", \"\").upper()\n        severity_colors = {\"ERROR\": \"red\", \"WARN\": \"yellow\", \"INFO\": \"blue\"}\n        color = severity_colors.get(severity, \"white\")\n        \n        # Finding panel with feedback info\n        finding_text = Text()\n        finding_text.append(f\"[{severity}] \", style=f\"bold {color}\")\n        finding_text.append(f\"{f.get('title', 'No title')}\", style=\"bold\")\n        finding_text.append(f\"\\n\ud83d\udccd {f.get('file', '?')}:{f.get('line', '?')}\", style=\"dim\")\n        \n        # Add feedback status and ID\n        feedback_status = f.get(\"feedback_status\", \"open\")\n        feedback_colors = {\"resolved\": \"green\", \"false_positive\": \"orange1\", \"will_fix_later\": \"yellow\", \"open\": \"blue\"}\n        feedback_color = feedback_colors.get(feedback_status, \"white\")\n        \n        finding_text.append(f\"\\n\ud83c\udff7\ufe0f  Status: \", style=\"dim\")\n        finding_text.append(f\"{feedback_status.replace('_', ' ').title()}\", style=f\"bold {feedback_color}\")\n        \n        if f.get('finding_id'):\n            finding_text.append(f\"\\n\ud83c\udd94 ID: \", style=\"dim\")\n            finding_text.append(f\"{f.get('finding_id')}\", style=\"cyan\")\n        \n        if f.get('feedback_count', 0) > 0:\n            finding_text.append(f\"\\n\ud83d\udcac Comments: \", style=\"dim\")\n            finding_text.append(f\"{f.get('feedback_count')}\", style=\"yellow\")\n        \n        if f.get('description'):\n            finding_text.append(f\"\\n\\n{f.get('description')}\", style=\"\")\n        \n        if f.get('recommendation'):\n            finding_text.append(f\"\\n\\n\ud83d\udca1 Recommendation: \", style=\"bold green\")\n            finding_text.append(f\"{f.get('recommendation')}\", style=\"green\")\n        \n        # Add feedback management hint\n        if f.get('finding_id'):\n            finding_text.append(f\"\\n\\n[dim]\ud83d\udca1 Use: python cli.py --feedback comment --finding-id {f.get('finding_id')} --message \\\"your comment\\\"[/dim]\", style=\"\")\n        \n        panel = Panel(\n            finding_text,\n            title=f\"[bold]Finding {i}/{len(findings)} - {f.get('rule', 'UNKNOWN')}[/bold]\",\n            border_style=color,\n            box=box.ROUNDED\n        )\n        console.print(panel)\n        console.print(\"\")",
+      "metadata": {
+        "file": "cli.py",
+        "type": "function",
+        "name": "display_detailed_findings",
+        "line": 192,
+        "args": [
+          "findings"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "cli.py",
+      "content": "Function handle_feedback_operations in cli.py:\ndef handle_feedback_operations(args) -> int:\n    \"\"\"Handle all feedback-related operations\"\"\"\n    feedback_tracker = FeedbackTracker()\n    \n    if args.feedback == \"list\":\n        return handle_feedback_list(feedback_tracker, args)\n    elif args.feedback == \"show\":\n        return handle_feedback_show(feedback_tracker, args)\n    elif args.feedback == \"comment\":\n        return handle_feedback_commen...",
+      "code": "def handle_feedback_operations(args) -> int:\n    \"\"\"Handle all feedback-related operations\"\"\"\n    feedback_tracker = FeedbackTracker()\n    \n    if args.feedback == \"list\":\n        return handle_feedback_list(feedback_tracker, args)\n    elif args.feedback == \"show\":\n        return handle_feedback_show(feedback_tracker, args)\n    elif args.feedback == \"comment\":\n        return handle_feedback_comment(feedback_tracker, args)\n    elif args.feedback == \"resolve\":\n        return handle_feedback_resolve(feedback_tracker, args)\n    elif args.feedback == \"false-positive\":\n        return handle_feedback_false_positive(feedback_tracker, args)\n    elif args.feedback == \"will-fix-later\":\n        return handle_feedback_will_fix_later(feedback_tracker, args)\n    elif args.feedback == \"stats\":\n        return handle_feedback_stats(feedback_tracker, args)\n    elif args.feedback == \"search\":\n        return handle_feedback_search(feedback_tracker, args)\n    else:\n        console.print(\"[bold red]\u274c Unknown feedback operation[/bold red]\")\n        return 1",
+      "metadata": {
+        "file": "cli.py",
+        "type": "function",
+        "name": "handle_feedback_operations",
+        "line": 246,
+        "args": [
+          "args"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "cli.py",
+      "content": "Function handle_feedback_list in cli.py:\ndef handle_feedback_list(feedback_tracker: FeedbackTracker, args) -> int:\n    \"\"\"List all findings with feedback\"\"\"\n    findings = feedback_tracker.list_findings(status=args.status, author=args.author)\n    \n    if not findings:\n        console.print(\"[bold yellow]\ud83d\udccb No findings match the criteria[/bold yellow]\")\n        return 0\n    \n    # Create findings table\n    table = Table(show_header=True, h...",
+      "code": "def handle_feedback_list(feedback_tracker: FeedbackTracker, args) -> int:\n    \"\"\"List all findings with feedback\"\"\"\n    findings = feedback_tracker.list_findings(status=args.status, author=args.author)\n    \n    if not findings:\n        console.print(\"[bold yellow]\ud83d\udccb No findings match the criteria[/bold yellow]\")\n        return 0\n    \n    # Create findings table\n    table = Table(show_header=True, header_style=\"bold magenta\", box=box.ROUNDED)\n    table.add_column(\"ID\", style=\"cyan\", width=12)\n    table.add_column(\"Status\", style=\"bold\", width=15)\n    table.add_column(\"File:Line\", style=\"yellow\", width=25)\n    table.add_column(\"Rule\", style=\"green\", width=12)\n    table.add_column(\"Title\", style=\"white\")\n    table.add_column(\"Comments\", style=\"blue\", width=8)\n    \n    status_colors = {\n        \"open\": \"[bold blue]\ud83d\udd13 Open[/bold blue]\",\n        \"resolve\": \"[bold green]\u2705 Resolved[/bold green]\", \n        \"false_positive\": \"[bold orange1]\ud83d\udeab False Positive[/bold orange1]\",\n        \"will_fix_later\": \"[bold yellow]\u23f3 Will Fix Later[/bold yellow]\"\n    }\n    \n    for finding_id, finding_data in findings.items():\n        table.add_row(\n            finding_id,\n            status_colors.get(finding_data[\"status\"], finding_data[\"status\"]),\n            f\"{finding_data['file']}:{finding_data['line']}\",\n            finding_data[\"rule\"],\n            finding_data[\"title\"][:50] + (\"...\" if len(finding_data[\"title\"]) > 50 else \"\"),\n            str(len(finding_data[\"discussion\"]))\n        )\n    \n    console.print(f\"\\n[bold blue]\ud83d\udccb Found {len(findings)} findings[/bold blue]\")\n    console.print(table)\n    return 0",
+      "metadata": {
+        "file": "cli.py",
+        "type": "function",
+        "name": "handle_feedback_list",
+        "line": 270,
+        "args": [
+          "feedback_tracker",
+          "args"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "cli.py",
+      "content": "Function handle_feedback_show in cli.py:\ndef handle_feedback_show(feedback_tracker: FeedbackTracker, args) -> int:\n    \"\"\"Show detailed feedback for a specific finding\"\"\"\n    if not args.finding_id:\n        console.print(\"[bold red]\u274c --finding-id required for show operation[/bold red]\")\n        return 1\n    \n    finding_data = feedback_tracker.get_finding_feedback(args.finding_id)\n    if not finding_data:\n        console.print(f\"[bold re...",
+      "code": "def handle_feedback_show(feedback_tracker: FeedbackTracker, args) -> int:\n    \"\"\"Show detailed feedback for a specific finding\"\"\"\n    if not args.finding_id:\n        console.print(\"[bold red]\u274c --finding-id required for show operation[/bold red]\")\n        return 1\n    \n    finding_data = feedback_tracker.get_finding_feedback(args.finding_id)\n    if not finding_data:\n        console.print(f\"[bold red]\u274c Finding {args.finding_id} not found[/bold red]\")\n        return 1\n    \n    # Display finding details\n    status_colors = {\n        \"open\": \"blue\", \"resolved\": \"green\", \n        \"false_positive\": \"orange1\", \"will_fix_later\": \"yellow\"\n    }\n    color = status_colors.get(finding_data.status, \"white\")\n    \n    finding_panel = Panel(\n        f\"[bold]File:[/bold] {finding_data.file}:{finding_data.line}\\n\"\n        f\"[bold]Rule:[/bold] {finding_data.rule}\\n\"\n        f\"[bold]Title:[/bold] {finding_data.title or 'No title'}\\n\"\n        f\"[bold]Status:[/bold] [{color}]{finding_data.status.replace('_', ' ').title()}[/{color}]\\n\"\n        f\"[bold]Created:[/bold] {finding_data.created_at[:19]}\",\n        title=f\"[bold]Finding {args.finding_id}[/bold]\",\n        border_style=color,\n        box=box.ROUNDED\n    )\n    console.print(finding_panel)\n    \n    # Display discussion\n    if finding_data.entries:\n        console.print(f\"\\n[bold magenta]\ud83d\udcac Discussion ({len(finding_data.entries)} messages)[/bold magenta]\")\n        \n        for i, entry in enumerate(finding_data.entries, 1):\n            timestamp = entry.timestamp[:19].replace(\"T\", \" \")\n            action_icons = {\n                \"comment\": \"\ud83d\udcac\", \"reply\": \"\u21b3\", \"resolve\": \"\u2705\", \"status_change\": \"\ud83d\udd04\",\n                \"false_positive\": \"\ud83d\udeab\", \"will_fix_later\": \"\u23f3\", \"created\": \"\ud83d\udcdd\"\n            }\n            icon = action_icons.get(entry.action, \"\ud83d\udcdd\")\n            \n            message_panel = Panel(\n                f\"[dim]{timestamp}[/dim]\\n{entry.message}\",\n                title=f\"{icon} {entry.author} - {entry.action}\",\n                border_style=\"dim\",\n                box=box.ROUNDED\n            )\n            console.print(message_panel)\n    else:\n        console.print(\"\\n[dim]No discussion yet[/dim]\")\n    \n    return 0",
+      "metadata": {
+        "file": "cli.py",
+        "type": "function",
+        "name": "handle_feedback_show",
+        "line": 308,
+        "args": [
+          "feedback_tracker",
+          "args"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "cli.py",
+      "content": "Function handle_feedback_comment in cli.py:\ndef handle_feedback_comment(feedback_tracker: FeedbackTracker, args) -> int:\n    \"\"\"Add comment to a finding\"\"\"\n    if not args.finding_id:\n        console.print(\"[bold red]\u274c --finding-id required for comment operation[/bold red]\")\n        return 1\n    \n    if not args.message:\n        console.print(\"[bold red]\u274c --message required for comment operation[/bold red]\")\n        return 1\n    \n    succes...",
+      "code": "def handle_feedback_comment(feedback_tracker: FeedbackTracker, args) -> int:\n    \"\"\"Add comment to a finding\"\"\"\n    if not args.finding_id:\n        console.print(\"[bold red]\u274c --finding-id required for comment operation[/bold red]\")\n        return 1\n    \n    if not args.message:\n        console.print(\"[bold red]\u274c --message required for comment operation[/bold red]\")\n        return 1\n    \n    success = feedback_tracker.add_comment(args.finding_id, args.message, args.author)\n    if success:\n        console.print(f\"[bold green]\u2705 Comment added to finding {args.finding_id}[/bold green]\")\n        return 0\n    else:\n        console.print(f\"[bold red]\u274c Failed to add comment to finding {args.finding_id}[/bold red]\")\n        return 1",
+      "metadata": {
+        "file": "cli.py",
+        "type": "function",
+        "name": "handle_feedback_comment",
+        "line": 362,
+        "args": [
+          "feedback_tracker",
+          "args"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "cli.py",
+      "content": "Function handle_feedback_resolve in cli.py:\ndef handle_feedback_resolve(feedback_tracker: FeedbackTracker, args) -> int:\n    \"\"\"Mark finding as resolved\"\"\"\n    if not args.finding_id:\n        console.print(\"[bold red]\u274c --finding-id required for resolve operation[/bold red]\")\n        return 1\n    \n    message = args.message or \"Marked as resolved\"\n    success = feedback_tracker.mark_resolved(args.finding_id, message, args.author)\n    if succ...",
+      "code": "def handle_feedback_resolve(feedback_tracker: FeedbackTracker, args) -> int:\n    \"\"\"Mark finding as resolved\"\"\"\n    if not args.finding_id:\n        console.print(\"[bold red]\u274c --finding-id required for resolve operation[/bold red]\")\n        return 1\n    \n    message = args.message or \"Marked as resolved\"\n    success = feedback_tracker.mark_resolved(args.finding_id, message, args.author)\n    if success:\n        console.print(f\"[bold green]\u2705 Finding {args.finding_id} marked as resolved[/bold green]\")\n        return 0\n    else:\n        console.print(f\"[bold red]\u274c Failed to resolve finding {args.finding_id}[/bold red]\")\n        return 1",
+      "metadata": {
+        "file": "cli.py",
+        "type": "function",
+        "name": "handle_feedback_resolve",
+        "line": 380,
+        "args": [
+          "feedback_tracker",
+          "args"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "cli.py",
+      "content": "Function handle_feedback_false_positive in cli.py:\ndef handle_feedback_false_positive(feedback_tracker: FeedbackTracker, args) -> int:\n    \"\"\"Mark finding as false positive\"\"\"\n    if not args.finding_id:\n        console.print(\"[bold red]\u274c --finding-id required for false-positive operation[/bold red]\")\n        return 1\n    \n    message = args.message or \"Marked as false positive\"\n    success = feedback_tracker.mark_false_positive(args.finding_id, m...",
+      "code": "def handle_feedback_false_positive(feedback_tracker: FeedbackTracker, args) -> int:\n    \"\"\"Mark finding as false positive\"\"\"\n    if not args.finding_id:\n        console.print(\"[bold red]\u274c --finding-id required for false-positive operation[/bold red]\")\n        return 1\n    \n    message = args.message or \"Marked as false positive\"\n    success = feedback_tracker.mark_false_positive(args.finding_id, message, args.author)\n    if success:\n        console.print(f\"[bold orange1]\ud83d\udeab Finding {args.finding_id} marked as false positive[/bold orange1]\")\n        return 0\n    else:\n        console.print(f\"[bold red]\u274c Failed to mark finding {args.finding_id} as false positive[/bold red]\")\n        return 1",
+      "metadata": {
+        "file": "cli.py",
+        "type": "function",
+        "name": "handle_feedback_false_positive",
+        "line": 395,
+        "args": [
+          "feedback_tracker",
+          "args"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "cli.py",
+      "content": "Function handle_feedback_will_fix_later in cli.py:\ndef handle_feedback_will_fix_later(feedback_tracker: FeedbackTracker, args) -> int:\n    \"\"\"Mark finding as will fix later\"\"\"\n    if not args.finding_id:\n        console.print(\"[bold red]\u274c --finding-id required for will-fix-later operation[/bold red]\")\n        return 1\n    \n    message = args.message or \"Will fix in future iteration\"\n    success = feedback_tracker.mark_will_fix_later(args.finding_i...",
+      "code": "def handle_feedback_will_fix_later(feedback_tracker: FeedbackTracker, args) -> int:\n    \"\"\"Mark finding as will fix later\"\"\"\n    if not args.finding_id:\n        console.print(\"[bold red]\u274c --finding-id required for will-fix-later operation[/bold red]\")\n        return 1\n    \n    message = args.message or \"Will fix in future iteration\"\n    success = feedback_tracker.mark_will_fix_later(args.finding_id, message, args.author)\n    if success:\n        console.print(f\"[bold yellow]\u23f3 Finding {args.finding_id} marked as will fix later[/bold yellow]\")\n        return 0\n    else:\n        console.print(f\"[bold red]\u274c Failed to mark finding {args.finding_id} as will fix later[/bold red]\")\n        return 1",
+      "metadata": {
+        "file": "cli.py",
+        "type": "function",
+        "name": "handle_feedback_will_fix_later",
+        "line": 410,
+        "args": [
+          "feedback_tracker",
+          "args"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "cli.py",
+      "content": "Function handle_feedback_stats in cli.py:\ndef handle_feedback_stats(feedback_tracker: FeedbackTracker, args) -> int:\n    \"\"\"Show feedback statistics\"\"\"\n    stats = feedback_tracker.get_finding_stats()\n    \n    # Overview panel\n    overview_panel = Panel(\n        f\"[bold]Total Findings:[/bold] {stats['total_findings']}\\n\"\n        f\"[bold]Total Comments:[/bold] {stats['total_comments']}\\n\"\n        f\"[bold]Resolution Rate:[/bold] {stats['res...",
+      "code": "def handle_feedback_stats(feedback_tracker: FeedbackTracker, args) -> int:\n    \"\"\"Show feedback statistics\"\"\"\n    stats = feedback_tracker.get_finding_stats()\n    \n    # Overview panel\n    overview_panel = Panel(\n        f\"[bold]Total Findings:[/bold] {stats['total_findings']}\\n\"\n        f\"[bold]Total Comments:[/bold] {stats['total_comments']}\\n\"\n        f\"[bold]Resolution Rate:[/bold] {stats['resolution_rate']}%\",\n        title=\"[bold blue]\ud83d\udcca Feedback Overview[/bold blue]\",\n        border_style=\"blue\",\n        box=box.ROUNDED\n    )\n    console.print(overview_panel)\n    \n    # Status breakdown\n    if stats['by_status']:\n        status_table = Table(show_header=True, header_style=\"bold magenta\", box=box.ROUNDED)\n        status_table.add_column(\"Status\", style=\"bold\")\n        status_table.add_column(\"Count\", style=\"cyan\", justify=\"right\")\n        \n        status_names = {\n            \"open\": \"\ud83d\udd13 Open\",\n            \"resolve\": \"\u2705 Resolved\", \n            \"false_positive\": \"\ud83d\udeab False Positive\",\n            \"will_fix_later\": \"\u23f3 Will Fix Later\"\n        }\n        \n        for status, count in stats['by_status'].items():\n            status_table.add_row(\n                status_names.get(status, status.title()),\n                str(count)\n            )\n        \n        console.print(\"\\n[bold magenta]\ud83d\udccb Status Breakdown[/bold magenta]\")\n        console.print(status_table)\n    \n    # Author activity (disabled for now)\n    if False:  # stats.get('by_author'):\n        author_table = Table(show_header=True, header_style=\"bold green\", box=box.ROUNDED)\n        author_table.add_column(\"Author\", style=\"bold\")\n        author_table.add_column(\"Actions\", style=\"cyan\", justify=\"right\")\n        \n        for author, count in sorted(stats['by_author'].items(), key=lambda x: x[1], reverse=True):\n            author_table.add_row(author, str(count))\n        \n        console.print(\"\\n[bold green]\ud83d\udc65 Author Activity[/bold green]\")\n        console.print(author_table)\n    \n    return 0",
+      "metadata": {
+        "file": "cli.py",
+        "type": "function",
+        "name": "handle_feedback_stats",
+        "line": 425,
+        "args": [
+          "feedback_tracker",
+          "args"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "cli.py",
+      "content": "Function handle_feedback_search in cli.py:\ndef handle_feedback_search(feedback_tracker: FeedbackTracker, args) -> int:\n    \"\"\"Search findings by query\"\"\"\n    if not args.query:\n        console.print(\"[bold red]\u274c --query required for search operation[/bold red]\")\n        return 1\n    \n    findings = feedback_tracker.search_findings(args.query)\n    \n    if not findings:\n        console.print(f\"[bold yellow]\ud83d\udd0d No findings match query: '{args.q...",
+      "code": "def handle_feedback_search(feedback_tracker: FeedbackTracker, args) -> int:\n    \"\"\"Search findings by query\"\"\"\n    if not args.query:\n        console.print(\"[bold red]\u274c --query required for search operation[/bold red]\")\n        return 1\n    \n    findings = feedback_tracker.search_findings(args.query)\n    \n    if not findings:\n        console.print(f\"[bold yellow]\ud83d\udd0d No findings match query: '{args.query}'[/bold yellow]\")\n        return 0\n    \n    console.print(f\"[bold blue]\ud83d\udd0d Found {len(findings)} matching findings for: '{args.query}'[/bold blue]\\n\")\n    \n    # Use same display as list\n    return handle_feedback_list(FeedbackTracker(), type('Args', (), {'status': None, 'author': None}))",
+      "metadata": {
+        "file": "cli.py",
+        "type": "function",
+        "name": "handle_feedback_search",
+        "line": 476,
+        "args": [
+          "feedback_tracker",
+          "args"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "cli.py",
+      "content": "Function main in cli.py:\ndef main():\n    parser = argparse.ArgumentParser(description=\"AI Code Review Assistant (Ollama Only)\")\n    parser.add_argument(\"--config\", default=\"review_config.yaml\", help=\"Path to config file\")\n    parser.add_argument(\"--rules\", default=\"rules.yaml\", help=\"Path to rules file\")\n    parser.add_argument(\"--apply-fixes\", action=\"store_true\", \n                        help=\"Enable automatic applicati...",
+      "code": "def main():\n    parser = argparse.ArgumentParser(description=\"AI Code Review Assistant (Ollama Only)\")\n    parser.add_argument(\"--config\", default=\"review_config.yaml\", help=\"Path to config file\")\n    parser.add_argument(\"--rules\", default=\"rules.yaml\", help=\"Path to rules file\")\n    parser.add_argument(\"--apply-fixes\", action=\"store_true\", \n                        help=\"Enable automatic application of AI suggested fixes (overrides config)\")\n    parser.add_argument(\"--no-apply-fixes\", action=\"store_true\", \n                        help=\"Disable automatic fixes (overrides config)\")\n    parser.add_argument(\"--format\", choices=[\"md\", \"json\", \"sarif\"], action=\"append\",\n                        help=\"Output formats\")\n    parser.add_argument(\"--display\", choices=[\"compact\", \"detailed\", \"summary\"], \n                       default=\"detailed\", help=\"Output display mode\")\n    \n    # Feedback system arguments\n    parser.add_argument(\"--feedback\", choices=[\"list\", \"show\", \"comment\", \"resolve\", \"false-positive\", \"will-fix-later\", \"stats\", \"search\"], \n                       help=\"Feedback management operations\")\n    parser.add_argument(\"--finding-id\", help=\"Finding ID for feedback operations\")\n    parser.add_argument(\"--message\", help=\"Message for feedback operations\")\n    parser.add_argument(\"--author\", help=\"Author name for feedback (defaults to system user)\")\n    parser.add_argument(\"--status\", choices=[\"open\", \"resolve\", \"false_positive\", \"will_fix_later\"], \n                       help=\"Filter findings by status\")\n    parser.add_argument(\"--query\", help=\"Search query for findings\")\n    \n    args = parser.parse_args()\n\n    cfg = load_yaml(args.config) if os.path.exists(args.config) else {}\n    rules = load_yaml(args.rules).get(\"guidelines\", []) if os.path.exists(args.rules) else []\n    formats = args.format or cfg.get(\"formats\", [\"md\"])\n\n    # Handle feedback operations first (separate from review workflow)\n    if args.feedback:\n        return handle_feedback_operations(args)\n    \n    # Backend fixed to Ollama\n    backend = \"ollama\"\n    \n    # Show beautiful startup banner\n    show_startup_banner(cfg, rules, formats, args)\n\n    # Get staged changes with progress\n    with Progress(\n        SpinnerColumn(),\n        TextColumn(\"[bold blue]Analyzing staged changes...\"),\n        console=console\n    ) as progress:\n        progress.add_task(\"Getting diff\", total=None)\n        diff = get_staged_diff(unified_context=0)\n    \n    if not diff.strip():\n        console.print(Panel(\n            \"[bold yellow]\u26a0\ufe0f  No staged changes found[/bold yellow]\\n\"\n            \"[dim]\u2022 Use 'git add <files>' to stage files for review[/dim]\\n\"\n            \"[dim]\u2022 See COMMANDS.md for quick reference[/dim]\\n\"\n            \"[dim]\u2022 Run 'python cli.py --help' for all options[/dim]\",\n            border_style=\"yellow\",\n            box=box.ROUNDED\n        ))\n        return 0\n\n    hunks = split_into_hunks(diff)\n    tracker = CostTracker()\n    \n    # Show changed files tree\n    show_changes_tree(hunks)\n\n    key = cache_key(diff + backend)\n    cache_file = CACHE_DIR / f\"{key}.json\"\n    \n    if cache_file.exists():\n        console.print(\"[dim]\ud83d\udccb Using cached analysis...[/dim]\")\n        report = json.loads(cache_file.read_text())\n    else:\n        # Check if contextual analysis is enabled\n        enable_context = cfg.get(\"enable_codebase_context\", True)\n        context_chunks = cfg.get(\"context_chunks\", 5)\n        \n        if enable_context and hunks:\n            # Contextual AI analysis with codebase awareness\n            with Progress(\n                SpinnerColumn(),\n                TextColumn(\"[bold magenta]\ud83e\udde0 Analyzing codebase for context...\"),\n                BarColumn(),\n                console=console\n            ) as progress:\n                context_task = progress.add_task(\"Context Analysis\", total=100)\n                \n                try:\n                    # Initialize context engine\n                    context_engine = CodebaseContextEngine()\n                    progress.update(context_task, advance=20, description=\"[bold magenta]Tokenizing codebase...\")\n                    \n                    # Get changed files and diff content\n                    changed_files = list(set(h['file'] for h in hunks))\n                    diff_content = \"\\n\".join(\"\\n\".join(h[\"raw\"]) for h in hunks)\n                    \n                    # Generate or load embeddings\n                    chunks = context_engine.tokenize_project()\n                    progress.update(context_task, advance=50, description=\"[bold magenta]Generating embeddings...\")\n                    \n                    embedding_data = context_engine.generate_embeddings(chunks)\n                    progress.update(context_task, advance=70, description=\"[bold magenta]Finding relevant context...\")\n                    \n                    # Find relevant context\n                    relevant_context = context_engine.find_relevant_context(\n                        changed_files, diff_content, embedding_data, top_k=context_chunks\n                    )\n                    progress.update(context_task, advance=100)\n                    \n                    if relevant_context:\n                        console.print(f\"[dim]\ud83d\udd0d Found {len(relevant_context)} relevant code patterns[/dim]\")\n                        console.print(f\"[dim]\ud83d\udccb Context sources: {', '.join(set(Path(ctx['file']).name for ctx in relevant_context))[:3]}[/dim]\")\n                        \n                        # Enhanced review with context\n                        with Progress(\n                            SpinnerColumn(),\n                            TextColumn(\"[bold green]\ud83e\udd16 Running contextual AI analysis...\"),\n                            BarColumn(),\n                            console=console\n                        ) as ai_progress:\n                            ai_task = ai_progress.add_task(\"AI Review\", total=100)\n                            ai_progress.update(ai_task, advance=30)\n                            \n                            report = review_hunks_with_context(hunks, rules, relevant_context, max_findings=50)\n                            ai_progress.update(ai_task, advance=100)\n                    else:\n                        console.print(\"[dim]\u2139\ufe0f No relevant context found, using standard review[/dim]\")\n                        # Fall back to standard review\n                        with Progress(\n                            SpinnerColumn(),\n                            TextColumn(\"[bold green]\ud83e\udd16 Running standard AI analysis...\"),\n                            BarColumn(),\n                            console=console\n                        ) as ai_progress:\n                            ai_task = ai_progress.add_task(\"AI Review\", total=100)\n                            ai_progress.update(ai_task, advance=30)\n                            \n                            report = review_hunks(hunks, rules, max_findings=50)\n                            ai_progress.update(ai_task, advance=100)\n                            \n                except Exception as e:\n                    console.print(f\"[dim yellow]\u26a0\ufe0f Context analysis failed ({e}), using standard review[/dim yellow]\")\n                    # Fall back to standard review\n                    with Progress(\n                        SpinnerColumn(),\n                        TextColumn(\"[bold green]\ud83e\udd16 Running standard AI analysis...\"),\n                        BarColumn(),\n                        console=console\n                    ) as ai_progress:\n                        ai_task = ai_progress.add_task(\"AI Review\", total=100)\n                        ai_progress.update(ai_task, advance=30)\n                        \n                        report = review_hunks(hunks, rules, max_findings=50)\n                        ai_progress.update(ai_task, advance=100)\n        else:\n            # Standard AI analysis without context\n            with Progress(\n                SpinnerColumn(),\n                TextColumn(\"[bold green]\ud83e\udd16 Running standard AI analysis...\"),\n                BarColumn(),\n                console=console\n            ) as progress:\n                ai_task = progress.add_task(\"AI Review\", total=100)\n                progress.update(ai_task, advance=30)\n                \n                report = review_hunks(hunks, rules, max_findings=50)\n                progress.update(ai_task, advance=100)\n                \n        cache_file.write_text(json.dumps(report, indent=2))\n\n    # Static analysis with progress\n    with Progress(\n        SpinnerColumn(),\n        TextColumn(\"[bold cyan]\ud83d\udd0d Running static analysis...\"),\n        console=console\n    ) as progress:\n        linter_task = progress.add_task(\"Linters\", total=3)\n        \n        progress.update(linter_task, description=\"[bold cyan]Running Ruff...[/bold cyan]\")\n        ruff = run_ruff()\n        progress.advance(linter_task)\n        \n        progress.update(linter_task, description=\"[bold cyan]Running Bandit...[/bold cyan]\")\n        bandit = run_bandit()\n        progress.advance(linter_task)\n        \n        progress.update(linter_task, description=\"[bold cyan]Running MyPy...[/bold cyan]\")\n        mypy = run_mypy()\n        progress.advance(linter_task)\n\n    findings = report.get(\"findings\", [])\n    for item in ruff:\n        findings.append({\n            \"file\": item[\"filename\"],\n            \"line\": item[\"location\"][\"row\"],\n            \"rule\": item[\"code\"],\n            \"severity\": \"warn\",\n            \"title\": item[\"message\"],\n            \"description\": \"ruff\",\n            \"recommendation\": \"Conform to lint rule\",\n            \"auto_fix_patch\": \"\"\n        })\n    for item in bandit:\n        findings.append({\n            \"file\": item.get(\"filename\"),\n            \"line\": item.get(\"line_number\"),\n            \"rule\": f\"BANDIT-{item.get('test_id')}\",\n            \"severity\": \"error\" if item.get(\"issue_severity\") == \"HIGH\" else \"warn\",\n            \"title\": item.get(\"issue_text\"),\n            \"description\": \"bandit\",\n            \"recommendation\": \"Refactor to mitigate security issue\",\n            \"auto_fix_patch\": \"\"\n        })\n\n    # Initialize feedback tracker and annotate findings\n    feedback_tracker = FeedbackTracker()\n    \n    # Import new findings for tracking\n    imported_count = feedback_tracker.import_findings_for_tracking(findings)\n    if imported_count > 0:\n        console.print(f\"[dim]\ud83d\udcdd Imported {imported_count} new findings for tracking[/dim]\")\n    \n    # Annotate findings with feedback data\n    annotated_findings = feedback_tracker.annotate_findings(findings)\n    \n    out = {\n        \"summary\": report.get(\"summary\", \"\"),\n        \"effort\": report.get(\"effort\", \"S\"),\n        \"findings\": annotated_findings,\n        \"mypy\": mypy,\n        \"feedback_stats\": feedback_tracker.get_finding_stats()\n    }\n\n    # Determine autofix setting (CLI args override config)\n    enable_autofix = cfg.get(\"enable_autofix\", False)\n    if args.apply_fixes:\n        enable_autofix = True\n    elif args.no_apply_fixes:\n        enable_autofix = False\n    \n    # Apply auto-fix patches if enabled\n    applied = 0\n    if enable_autofix:\n        fixable_patches = [f for f in findings if f.get(\"auto_fix_patch\")]\n        if fixable_patches:\n            console.print(f\"\\n[bold yellow]\ud83d\udee0\ufe0f  Found {len(fixable_patches)} auto-fixable issues[/bold yellow]\")\n            console.print(\"[bold green]\ud83e\udd16 Auto-fix is ENABLED - applying fixes automatically...[/bold green]\")\n            \n            with Progress(\n                SpinnerColumn(),\n                TextColumn(\"[bold green]Applying fixes...\"),\n                BarColumn(),\n                console=console\n            ) as progress:\n                fix_task = progress.add_task(\"Fixes\", total=len(fixable_patches))\n                \n                for f in fixable_patches:\n                    patch = f.get(\"auto_fix_patch\")\n                    if patch and apply_unified_patch(patch):\n                        applied += 1\n                    progress.advance(fix_task)\n            \n            if applied:\n                console.print(f\"[bold green]\u2705 Applied {applied}/{len(fixable_patches)} auto-fix patches and staged them![/bold green]\")\n            else:\n                console.print(f\"[bold red]\u274c No patches could be applied (may have conflicts)[/bold red]\")\n    else:\n        # Show info about available fixes when autofix is disabled\n        fixable_patches = [f for f in findings if f.get(\"auto_fix_patch\")]\n        if fixable_patches:\n            console.print(f\"\\n[bold blue]\ud83d\udcdd Info: {len(fixable_patches)} auto-fixable issues found[/bold blue]\")\n            console.print(\"[dim]Use --apply-fixes to automatically apply suggested fixes[/dim]\")\n\n    # --- Output files ---\n    console.print(\"\\n[bold blue]\ud83d\udcc1 Generating Reports[/bold blue]\")\n    \n    if \"json\" in formats:\n        Path(\"ai_review.json\").write_text(json.dumps(out, indent=2))\n        console.print(\"[bold green]\ud83d\udcbe Wrote[/bold green] [cyan]ai_review.json[/cyan]\")\n\n    if \"md\" in formats:\n        md = [\"# AI Review Report\\n\", f\"**Effort**: {out['effort']}\\n\"]\n        if out.get(\"summary\"):\n            md.append(f\"> {out['summary']}\\n\")\n        if out.get(\"mypy\"):\n            md.append(\"## mypy\\n```\\n\" + out[\"mypy\"] + \"\\n```\\n\")\n        md.append(\"## Findings\\n\")\n        for f in findings:\n            severity = f.get('severity', 'info').upper()\n            rule = f.get('rule', 'GEN')\n            file_location = f.get('file', '?')\n            line_num = f.get('line', '?')\n            title = f.get('title', 'Unknown issue')\n            description = f.get('description', 'No description available')\n            recommendation = f.get('recommendation', 'No recommendation provided')\n            \n            md.append(f\"- **{severity}** [{rule}] \"\n                      f\"{file_location}:{line_num} \u2014 {title}\\n\"\n                      f\"  - {description}\\n\"\n                      f\"  - **Fix**: {recommendation}\\n\")\n        Path(\"AI_REVIEW.md\").write_text(\"\\n\".join(md))\n        console.print(\"[bold green]\ud83d\udcbe Wrote[/bold green] [cyan]AI_REVIEW.md[/cyan]\")\n\n    # Check for system issues in the review\n    summary = out.get(\"summary\", \"\")\n    if \"parse error\" in summary.lower() or \"non-json\" in summary.lower():\n        console.print(Panel(\n            \"[bold yellow]\u26a0\ufe0f  AI Analysis Warning[/bold yellow]\\n\"\n            f\"Issue: {summary}\\n\\n\"\n            \"[dim]Troubleshooting:[/dim]\\n\"\n            \"[dim]\u2022 Check that Ollama server is running: 'ollama serve'[/dim]\\n\"\n            \"[dim]\u2022 Verify model is available: 'ollama list'[/dim]\\n\"\n            \"[dim]\u2022 Try with smaller changes or simpler code[/dim]\\n\"\n            \"[dim]\u2022 Check .ai_review_cache/last_failed_response.txt for details[/dim]\",\n            border_style=\"yellow\",\n            box=box.ROUNDED\n        ))\n        console.print(\"\")\n    \n    # Display results based on chosen mode\n    console.print(\"\\n\")\n    \n    if args.display == \"summary\":\n        display_review_summary(findings, out.get(\"summary\"), out.get(\"effort\", \"S\"))\n    elif args.display == \"detailed\":\n        display_review_summary(findings, out.get(\"summary\"), out.get(\"effort\", \"S\"))\n        display_detailed_findings(findings)\n    elif args.display == \"compact\":\n        # Compact mode - one line per finding\n        if findings:\n            console.print(\"[bold magenta]\ud83d\udccb Quick Summary[/bold magenta]\")\n            for f in findings:\n                severity = f.get(\"severity\", \"info\").upper()\n                icons = {\"ERROR\": \"\ud83d\udea8\", \"WARN\": \"\u26a0\ufe0f\", \"INFO\": \"\u2139\ufe0f\"}\n                icon = icons.get(severity, \"\ud83d\udccc\")\n                console.print(f\"{icon} {f.get('file')}:{f.get('line')} - {f.get('title')}\")\n        else:\n            console.print(\"[bold green]\u2705 No issues found![/bold green]\")\n\n    if \"sarif\" in formats:\n        sarif = {\n            \"version\": \"2.1.0\",\n            \"runs\": [{\n                \"tool\": {\"driver\": {\"name\": \"AIReview\", \"informationUri\": \"local\"}},\n                \"results\": [{\n                    \"ruleId\": f.get(\"rule\", \"AI\"),\n                    \"message\": {\"text\": f.get(\"title\", \"Issue\")},\n                    \"level\": {\"info\": \"note\", \"warn\": \"warning\", \"error\": \"error\"}[f.get(\"severity\", \"info\")],\n                    \"locations\": [{\n                        \"physicalLocation\": {\n                            \"artifactLocation\": {\"uri\": f.get(\"file\", \"\")},\n                            \"region\": {\"startLine\": f.get(\"line\", 1)}\n                        }\n                    }]\n                } for f in findings]\n            }]\n        }\n        Path(\"ai_review.sarif\").write_text(json.dumps(sarif, indent=2))\n        console.print(\"[bold green]\ud83d\udcbe Wrote[/bold green] [cyan]ai_review.sarif[/cyan]\")\n    \n    # Additional summary from markdown file (legacy compatibility)\n    if Path(\"AI_REVIEW.md\").exists() and args.display == \"summary\":\n        console.print(\"\\n[bold blue]\ud83d\udcc4 Report Summary[/bold blue]\")\n        lines = Path(\"AI_REVIEW.md\").read_text().splitlines()\n        for line in lines:\n            if line.strip().startswith(\"- **\"):\n                console.print(f\"[dim]{line}[/dim]\")\n        console.print(\"[dim]Full report saved to AI_REVIEW.md[/dim]\\n\")\n\n    # Feedback statistics summary\n    if out.get(\"feedback_stats\"):\n        feedback_stats = out[\"feedback_stats\"]\n        \n        feedback_text = []\n        feedback_text.append(f\"[bold cyan]\ud83d\udcca Total Findings: {feedback_stats['total_findings']}[/bold cyan]\")\n        feedback_text.append(f\"[dim]Active: {feedback_stats['active_findings']} | Comments: {feedback_stats['total_comments']}[/dim]\")\n        feedback_text.append(f\"[bold green]Resolution Rate: {feedback_stats['resolution_rate']}%[/bold green]\")\n        \n        # Status breakdown\n        status_breakdown = []\n        for status, count in feedback_stats['by_status'].items():\n            if count > 0:\n                status_display = status.replace('_', ' ').title()\n                status_breakdown.append(f\"{status_display}: {count}\")\n        \n        if status_breakdown:\n            feedback_text.append(f\"[dim]{' | '.join(status_breakdown)}[/dim]\")\n        \n        feedback_panel = Panel(\n            \"\\n\".join(feedback_text),\n            title=\"[bold]\ud83d\udcac Feedback Summary[/bold]\",\n            border_style=\"cyan\",\n            box=box.ROUNDED\n        )\n        console.print(feedback_panel)\n    \n    # Performance summary\n    stats = tracker.summary()\n    \n    # Add context information if available\n    perf_text = [\n        f\"[bold green]\u23f1\ufe0f  Analysis completed in {stats['elapsed_sec']}s[/bold green]\",\n        f\"[dim]Characters processed: {stats['chars_in']} in, {stats['chars_out']} out[/dim]\"\n    ]\n    \n    # Show context usage if contextual analysis was used\n    context_used = report.get(\"context_used\", 0)\n    if context_used > 0:\n        perf_text.append(f\"[bold magenta]\ud83e\udde0 Contextual Analysis: {context_used} code patterns analyzed[/bold magenta]\")\n        perf_text.append(\"[dim]Enhanced with codebase awareness[/dim]\")\n    elif cfg.get(\"enable_codebase_context\", True):\n        perf_text.append(\"[dim]\ud83e\udde0 Standard analysis (no relevant context found)[/dim]\")\n    else:\n        perf_text.append(\"[dim]\ud83e\udde0 Contextual analysis disabled[/dim]\")\n    \n    perf_panel = Panel(\n        \"\\n\".join(perf_text),\n        title=\"[bold]\ud83d\udcca Performance[/bold]\",\n        border_style=\"green\",\n        box=box.ROUNDED\n    )\n    console.print(perf_panel)\n    \n    return 0",
+      "metadata": {
+        "file": "cli.py",
+        "type": "function",
+        "name": "main",
+        "line": 493,
+        "args": []
+      }
+    },
+    {
+      "type": "imports",
+      "file": "linters.py",
+      "content": "File linters.py imports: subprocess, json",
+      "code": "import subprocess\nimport json",
+      "metadata": {
+        "file": "linters.py",
+        "type": "imports",
+        "line": 1
+      }
+    },
+    {
+      "type": "function",
+      "file": "linters.py",
+      "content": "Function run_ruff in linters.py:\ndef run_ruff(paths=None):\n    cmd = [\"ruff\",\"check\",\"--quiet\",\"--output-format\",\"json\"]\n    if paths: cmd += paths\n    try:\n        r = subprocess.run(cmd, capture_output=True, text=True, check=True)\n        return json.loads(r.stdout) if r.stdout else []\n    except Exception:\n        return []...",
+      "code": "def run_ruff(paths=None):\n    cmd = [\"ruff\",\"check\",\"--quiet\",\"--output-format\",\"json\"]\n    if paths: cmd += paths\n    try:\n        r = subprocess.run(cmd, capture_output=True, text=True, check=True)\n        return json.loads(r.stdout) if r.stdout else []\n    except Exception:\n        return []",
+      "metadata": {
+        "file": "linters.py",
+        "type": "function",
+        "name": "run_ruff",
+        "line": 3,
+        "args": [
+          "paths"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "linters.py",
+      "content": "Function run_bandit in linters.py:\ndef run_bandit(paths=None):\n    cmd = [\"bandit\",\"-q\",\"-r\",\".\",\"-f\",\"json\"]\n    try:\n        r = subprocess.run(cmd, capture_output=True, text=True, check=True)\n        return json.loads(r.stdout).get(\"results\",[])\n    except Exception:\n        return []...",
+      "code": "def run_bandit(paths=None):\n    cmd = [\"bandit\",\"-q\",\"-r\",\".\",\"-f\",\"json\"]\n    try:\n        r = subprocess.run(cmd, capture_output=True, text=True, check=True)\n        return json.loads(r.stdout).get(\"results\",[])\n    except Exception:\n        return []",
+      "metadata": {
+        "file": "linters.py",
+        "type": "function",
+        "name": "run_bandit",
+        "line": 12,
+        "args": [
+          "paths"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "linters.py",
+      "content": "Function run_mypy in linters.py:\ndef run_mypy(paths=None):\n    cmd = [\"mypy\",\"--pretty\",\"--hide-error-codes\",\"--no-error-summary\"]\n    if paths: cmd += paths\n    try:\n        r = subprocess.run(cmd, capture_output=True, text=True)\n        return r.stdout\n    except Exception:\n        return \"\"...",
+      "code": "def run_mypy(paths=None):\n    cmd = [\"mypy\",\"--pretty\",\"--hide-error-codes\",\"--no-error-summary\"]\n    if paths: cmd += paths\n    try:\n        r = subprocess.run(cmd, capture_output=True, text=True)\n        return r.stdout\n    except Exception:\n        return \"\"",
+      "metadata": {
+        "file": "linters.py",
+        "type": "function",
+        "name": "run_mypy",
+        "line": 20,
+        "args": [
+          "paths"
+        ]
+      }
+    },
+    {
+      "type": "imports",
+      "file": "codebase_context.py",
+      "content": "File codebase_context.py imports: ast, hashlib, json, os, pathlib.Path, typing.List, typing.Dict, typing.Any, typing.Optional, re",
+      "code": "import ast\nimport hashlib\nimport json\nimport os\nimport pathlib.Path",
+      "metadata": {
+        "file": "codebase_context.py",
+        "type": "imports",
+        "line": 1
+      }
+    },
+    {
+      "type": "class",
+      "file": "codebase_context.py",
+      "content": "Class CodebaseContextEngine in codebase_context.py:\nclass CodebaseContextEngine:\n    \"\"\"\n    Codebase context system that provides relevant code context for AI reviews.\n    Falls back to text-based similarity if ML libraries aren't available.\n    \"\"\"\n    \n    def __init__(self, model_name=\"all-MiniLM-L6-v2\"):\n        self.cache_dir = Path(\".codebase_context_cache\")\n        self.cache_dir.mkdir(exist_ok=True)\n        \n        # Initialize ML model i...",
+      "code": "class CodebaseContextEngine:\n    \"\"\"\n    Codebase context system that provides relevant code context for AI reviews.\n    Falls back to text-based similarity if ML libraries aren't available.\n    \"\"\"\n    \n    def __init__(self, model_name=\"all-MiniLM-L6-v2\"):\n        self.cache_dir = Path(\".codebase_context_cache\")\n        self.cache_dir.mkdir(exist_ok=True)\n        \n        # Initialize ML model if available\n        if ML_AVAILABLE:\n            try:\n                print(\"\ud83e\udde0 Loading sentence transformer model...\")\n                self.model = SentenceTransformer(model_name)\n                self.use_embeddings = True\n                print(f\"\u2705 Loaded {model_name} for semantic similarity\")\n            except Exception as e:\n                print(f\"\u26a0\ufe0f  Could not load ML model ({e}), using text-based similarity\")\n                self.use_embeddings = False\n        else:\n            self.use_embeddings = False\n        \n    def tokenize_project(self, project_root=\".\", exclude_patterns=None) -> List[Dict[str, Any]]:\n        \"\"\"Break codebase into semantic chunks\"\"\"\n        if exclude_patterns is None:\n            exclude_patterns = [\n                \"__pycache__\", \".git\", \".ai_review_cache\", \n                \"node_modules\", \".venv\", \"*.pyc\", \".codebase_context_cache\",\n                \"*.egg-info\", \".pytest_cache\", \".mypy_cache\", \".ruff_cache\"\n            ]\n        \n        print(\"\ud83d\udd0d Tokenizing codebase...\")\n        chunks = []\n        \n        # Find all Python files\n        python_files = list(Path(project_root).rglob(\"*.py\"))\n        \n        for py_file in python_files:\n            if self._should_exclude(py_file, exclude_patterns):\n                continue\n                \n            try:\n                file_chunks = self._extract_semantic_chunks(py_file)\n                chunks.extend(file_chunks)\n            except Exception as e:\n                print(f\"\u26a0\ufe0f  Could not parse {py_file}: {e}\")\n                continue\n        \n        print(f\"\ud83d\udce6 Extracted {len(chunks)} code chunks from {len(python_files)} files\")\n        return chunks\n    \n    def _should_exclude(self, filepath: Path, exclude_patterns: List[str]) -> bool:\n        \"\"\"Check if file should be excluded based on patterns\"\"\"\n        path_str = str(filepath)\n        \n        for pattern in exclude_patterns:\n            # Simple pattern matching\n            if pattern.startswith(\"*\"):\n                if path_str.endswith(pattern[1:]):\n                    return True\n            else:\n                if pattern in path_str:\n                    return True\n        return False\n    \n    def _extract_semantic_chunks(self, filepath: Path) -> List[Dict[str, Any]]:\n        \"\"\"Extract functions, classes, and imports from a Python file\"\"\"\n        chunks = []\n        \n        try:\n            content = filepath.read_text(encoding='utf-8')\n        except Exception:\n            return chunks\n        \n        try:\n            tree = ast.parse(content)\n        except SyntaxError:\n            # File might have syntax errors, skip detailed parsing\n            return self._create_fallback_chunk(filepath, content)\n        \n        # Extract imports (for understanding dependencies)\n        imports = []\n        for node in ast.walk(tree):\n            if isinstance(node, ast.Import):\n                imports.extend([alias.name for alias in node.names])\n            elif isinstance(node, ast.ImportFrom):\n                if node.module:\n                    module_name = node.module\n                    for alias in node.names:\n                        imports.append(f\"{module_name}.{alias.name}\")\n        \n        if imports:\n            chunks.append({\n                \"type\": \"imports\",\n                \"file\": str(filepath),\n                \"content\": f\"File {filepath.name} imports: {', '.join(imports[:10])}\",\n                \"code\": \"\\n\".join([f\"import {imp}\" for imp in imports[:5]]),\n                \"metadata\": {\n                    \"file\": str(filepath),\n                    \"type\": \"imports\",\n                    \"line\": 1\n                }\n            })\n        \n        # Extract functions\n        for node in ast.walk(tree):\n            if isinstance(node, ast.FunctionDef):\n                func_code = self._extract_node_code(content, node)\n                if func_code:\n                    chunks.append({\n                        \"type\": \"function\",\n                        \"file\": str(filepath),\n                        \"content\": f\"Function {node.name} in {filepath.name}:\\n{func_code[:400]}...\",\n                        \"code\": func_code,\n                        \"metadata\": {\n                            \"file\": str(filepath),\n                            \"type\": \"function\", \n                            \"name\": node.name,\n                            \"line\": node.lineno,\n                            \"args\": [arg.arg for arg in node.args.args] if hasattr(node.args, 'args') else []\n                        }\n                    })\n                    \n            elif isinstance(node, ast.ClassDef):\n                class_code = self._extract_node_code(content, node)\n                if class_code:\n                    chunks.append({\n                        \"type\": \"class\",\n                        \"file\": str(filepath),\n                        \"content\": f\"Class {node.name} in {filepath.name}:\\n{class_code[:400]}...\",\n                        \"code\": class_code,\n                        \"metadata\": {\n                            \"file\": str(filepath),\n                            \"type\": \"class\",\n                            \"name\": node.name,\n                            \"line\": node.lineno\n                        }\n                    })\n        \n        return chunks\n    \n    def _extract_node_code(self, content: str, node: ast.AST) -> str:\n        \"\"\"Extract source code for an AST node\"\"\"\n        try:\n            lines = content.splitlines()\n            start_line = node.lineno - 1\n            \n            # Find end line by looking for the next function/class or end of indentation\n            end_line = len(lines)\n            if hasattr(node, 'end_lineno') and node.end_lineno:\n                end_line = node.end_lineno\n            else:\n                # Fallback: find end by indentation\n                base_indent = len(lines[start_line]) - len(lines[start_line].lstrip())\n                for i in range(start_line + 1, len(lines)):\n                    line = lines[i]\n                    if line.strip() and len(line) - len(line.lstrip()) <= base_indent:\n                        end_line = i\n                        break\n            \n            return \"\\n\".join(lines[start_line:end_line])\n        except Exception:\n            return \"\"\n    \n    def _create_fallback_chunk(self, filepath: Path, content: str) -> List[Dict[str, Any]]:\n        \"\"\"Create a simple chunk when AST parsing fails\"\"\"\n        return [{\n            \"type\": \"file_overview\",\n            \"file\": str(filepath),\n            \"content\": f\"File {filepath.name} overview:\\n{content[:500]}...\",\n            \"code\": content[:500],\n            \"metadata\": {\n                \"file\": str(filepath),\n                \"type\": \"overview\",\n                \"line\": 1\n            }\n        }]\n    \n    def generate_embeddings(self, chunks: List[Dict[str, Any]]) -> Dict[str, Any]:\n        \"\"\"Generate embeddings for all code chunks\"\"\"\n        cache_key = self._get_project_hash()\n        cache_file = self.cache_dir / f\"embeddings_{cache_key}.json\"\n        \n        # Try to load from cache\n        if cache_file.exists():\n            try:\n                print(\"\ud83e\udde0 Loading cached codebase embeddings...\")\n                with open(cache_file, 'r') as f:\n                    cached_data = json.load(f)\n                    if cached_data.get(\"use_embeddings\") == self.use_embeddings:\n                        cached_data[\"chunks\"] = chunks  # Update chunks with latest\n                        return cached_data\n            except Exception:\n                pass\n        \n        print(f\"\ud83d\udd04 Generating context data for {len(chunks)} code chunks...\")\n        \n        embedding_data = {\n            \"chunks\": chunks,\n            \"cache_key\": cache_key,\n            \"use_embeddings\": self.use_embeddings,\n            \"generated_at\": time.time()\n        }\n        \n        if self.use_embeddings:\n            # Generate ML embeddings\n            texts = [chunk[\"content\"] for chunk in chunks]\n            try:\n                embeddings = self.model.encode(texts, show_progress_bar=True)\n                embedding_data[\"embeddings\"] = embeddings.tolist()\n                print(\"\u2705 Generated ML embeddings\")\n            except Exception as e:\n                print(f\"\u26a0\ufe0f  ML embedding failed ({e}), using text similarity\")\n                embedding_data[\"use_embeddings\"] = False\n                self.use_embeddings = False\n        \n        # Cache the results\n        try:\n            with open(cache_file, 'w') as f:\n                json.dump(embedding_data, f, indent=2)\n            print(f\"\ud83d\udcbe Cached context data to {cache_file}\")\n        except Exception as e:\n            print(f\"\u26a0\ufe0f  Could not cache embeddings: {e}\")\n        \n        return embedding_data\n    \n    def find_relevant_context(self, changed_files: List[str], \n                            diff_content: str, embedding_data: Dict[str, Any], \n                            top_k: int = 5) -> List[Dict[str, Any]]:\n        \"\"\"Find most relevant codebase context for the changes\"\"\"\n        \n        if self.use_embeddings and \"embeddings\" in embedding_data:\n            return self._find_context_with_embeddings(\n                changed_files, diff_content, embedding_data, top_k\n            )\n        else:\n            return self._find_context_with_text(\n                changed_files, diff_content, embedding_data, top_k\n            )\n    \n    def _find_context_with_embeddings(self, changed_files: List[str], \n                                    diff_content: str, embedding_data: Dict[str, Any], \n                                    top_k: int) -> List[Dict[str, Any]]:\n        \"\"\"Find context using ML embeddings\"\"\"\n        try:\n            import numpy as np\n            \n            # Create query from changes\n            query_parts = []\n            for file_path in changed_files:\n                query_parts.append(f\"Changes in {Path(file_path).name}\")\n            query_parts.append(f\"Code changes: {diff_content[:1000]}\")\n            query_text = \"\\n\".join(query_parts)\n            \n            # Get query embedding\n            query_embedding = self.model.encode([query_text])\n            embeddings_array = np.array(embedding_data[\"embeddings\"])\n            \n            # Calculate similarity\n            similarities = np.dot(embeddings_array, query_embedding.T).flatten()\n            \n            # Get top-k most similar chunks\n            top_indices = np.argsort(similarities)[-top_k:][::-1]\n            \n            relevant_context = []\n            for idx in top_indices:\n                if idx >= len(embedding_data[\"chunks\"]):\n                    continue\n                    \n                chunk = embedding_data[\"chunks\"][idx]\n                similarity = float(similarities[idx])\n                \n                if similarity > 0.2:  # Threshold for relevance\n                    relevant_context.append({\n                        \"content\": chunk[\"code\"][:800],\n                        \"file\": chunk[\"metadata\"][\"file\"],\n                        \"type\": chunk[\"metadata\"][\"type\"],\n                        \"name\": chunk[\"metadata\"].get(\"name\", \"\"),\n                        \"line\": chunk[\"metadata\"].get(\"line\", 1),\n                        \"similarity\": similarity\n                    })\n            \n            return relevant_context\n            \n        except Exception as e:\n            print(f\"\u26a0\ufe0f  Embedding similarity failed ({e}), falling back to text similarity\")\n            return self._find_context_with_text(changed_files, diff_content, embedding_data, top_k)\n    \n    def _find_context_with_text(self, changed_files: List[str], \n                              diff_content: str, embedding_data: Dict[str, Any], \n                              top_k: int) -> List[Dict[str, Any]]:\n        \"\"\"Find context using simple text similarity\"\"\"\n        \n        # Extract keywords from changes\n        change_keywords = set()\n        \n        # Add file names\n        for file_path in changed_files:\n            change_keywords.add(Path(file_path).stem)\n        \n        # Extract function/variable names from diff\n        words = re.findall(r'\\b[a-zA-Z_][a-zA-Z0-9_]+\\b', diff_content)\n        change_keywords.update(word for word in words if len(word) > 2)\n        \n        # Score chunks based on keyword overlap\n        scored_chunks = []\n        for chunk in embedding_data[\"chunks\"]:\n            score = 0\n            chunk_text = chunk[\"content\"].lower()\n            \n            # Boost score for same file\n            if any(Path(f).stem in chunk[\"file\"] for f in changed_files):\n                score += 10\n            \n            # Count keyword matches\n            for keyword in change_keywords:\n                if keyword.lower() in chunk_text:\n                    score += 1\n            \n            if score > 0:\n                scored_chunks.append((score, chunk))\n        \n        # Sort by score and take top-k\n        scored_chunks.sort(key=lambda x: x[0], reverse=True)\n        \n        relevant_context = []\n        for score, chunk in scored_chunks[:top_k]:\n            relevant_context.append({\n                \"content\": chunk[\"code\"][:800],\n                \"file\": chunk[\"metadata\"][\"file\"],\n                \"type\": chunk[\"metadata\"][\"type\"],\n                \"name\": chunk[\"metadata\"].get(\"name\", \"\"),\n                \"line\": chunk[\"metadata\"].get(\"line\", 1),\n                \"similarity\": score / 10.0  # Normalize score\n            })\n        \n        return relevant_context\n    \n    def _get_project_hash(self) -> str:\n        \"\"\"Generate a hash representing the current project state\"\"\"\n        # Simple hash based on file modification times\n        hash_input = \"\"\n        for py_file in Path(\".\").rglob(\"*.py\"):\n            if not self._should_exclude(py_file, [\".git\", \"__pycache__\"]):\n                try:\n                    mtime = py_file.stat().st_mtime\n                    hash_input += f\"{py_file}:{mtime};\"\n                except Exception:\n                    continue\n        \n        return hashlib.md5(hash_input.encode()).hexdigest()[:12]",
+      "metadata": {
+        "file": "codebase_context.py",
+        "type": "class",
+        "name": "CodebaseContextEngine",
+        "line": 20
+      }
+    },
+    {
+      "type": "function",
+      "file": "codebase_context.py",
+      "content": "Function __init__ in codebase_context.py:\n    def __init__(self, model_name=\"all-MiniLM-L6-v2\"):\n        self.cache_dir = Path(\".codebase_context_cache\")\n        self.cache_dir.mkdir(exist_ok=True)\n        \n        # Initialize ML model if available\n        if ML_AVAILABLE:\n            try:\n                print(\"\ud83e\udde0 Loading sentence transformer model...\")\n                self.model = SentenceTransformer(model_name)\n                self.use...",
+      "code": "    def __init__(self, model_name=\"all-MiniLM-L6-v2\"):\n        self.cache_dir = Path(\".codebase_context_cache\")\n        self.cache_dir.mkdir(exist_ok=True)\n        \n        # Initialize ML model if available\n        if ML_AVAILABLE:\n            try:\n                print(\"\ud83e\udde0 Loading sentence transformer model...\")\n                self.model = SentenceTransformer(model_name)\n                self.use_embeddings = True\n                print(f\"\u2705 Loaded {model_name} for semantic similarity\")\n            except Exception as e:\n                print(f\"\u26a0\ufe0f  Could not load ML model ({e}), using text-based similarity\")\n                self.use_embeddings = False\n        else:\n            self.use_embeddings = False",
+      "metadata": {
+        "file": "codebase_context.py",
+        "type": "function",
+        "name": "__init__",
+        "line": 26,
+        "args": [
+          "self",
+          "model_name"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "codebase_context.py",
+      "content": "Function tokenize_project in codebase_context.py:\n    def tokenize_project(self, project_root=\".\", exclude_patterns=None) -> List[Dict[str, Any]]:\n        \"\"\"Break codebase into semantic chunks\"\"\"\n        if exclude_patterns is None:\n            exclude_patterns = [\n                \"__pycache__\", \".git\", \".ai_review_cache\", \n                \"node_modules\", \".venv\", \"*.pyc\", \".codebase_context_cache\",\n                \"*.egg-info\", \".pytest_cache\",...",
+      "code": "    def tokenize_project(self, project_root=\".\", exclude_patterns=None) -> List[Dict[str, Any]]:\n        \"\"\"Break codebase into semantic chunks\"\"\"\n        if exclude_patterns is None:\n            exclude_patterns = [\n                \"__pycache__\", \".git\", \".ai_review_cache\", \n                \"node_modules\", \".venv\", \"*.pyc\", \".codebase_context_cache\",\n                \"*.egg-info\", \".pytest_cache\", \".mypy_cache\", \".ruff_cache\"\n            ]\n        \n        print(\"\ud83d\udd0d Tokenizing codebase...\")\n        chunks = []\n        \n        # Find all Python files\n        python_files = list(Path(project_root).rglob(\"*.py\"))\n        \n        for py_file in python_files:\n            if self._should_exclude(py_file, exclude_patterns):\n                continue\n                \n            try:\n                file_chunks = self._extract_semantic_chunks(py_file)\n                chunks.extend(file_chunks)\n            except Exception as e:\n                print(f\"\u26a0\ufe0f  Could not parse {py_file}: {e}\")\n                continue\n        \n        print(f\"\ud83d\udce6 Extracted {len(chunks)} code chunks from {len(python_files)} files\")\n        return chunks",
+      "metadata": {
+        "file": "codebase_context.py",
+        "type": "function",
+        "name": "tokenize_project",
+        "line": 43,
+        "args": [
+          "self",
+          "project_root",
+          "exclude_patterns"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "codebase_context.py",
+      "content": "Function _should_exclude in codebase_context.py:\n    def _should_exclude(self, filepath: Path, exclude_patterns: List[str]) -> bool:\n        \"\"\"Check if file should be excluded based on patterns\"\"\"\n        path_str = str(filepath)\n        \n        for pattern in exclude_patterns:\n            # Simple pattern matching\n            if pattern.startswith(\"*\"):\n                if path_str.endswith(pattern[1:]):\n                    return True\n       ...",
+      "code": "    def _should_exclude(self, filepath: Path, exclude_patterns: List[str]) -> bool:\n        \"\"\"Check if file should be excluded based on patterns\"\"\"\n        path_str = str(filepath)\n        \n        for pattern in exclude_patterns:\n            # Simple pattern matching\n            if pattern.startswith(\"*\"):\n                if path_str.endswith(pattern[1:]):\n                    return True\n            else:\n                if pattern in path_str:\n                    return True\n        return False",
+      "metadata": {
+        "file": "codebase_context.py",
+        "type": "function",
+        "name": "_should_exclude",
+        "line": 72,
+        "args": [
+          "self",
+          "filepath",
+          "exclude_patterns"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "codebase_context.py",
+      "content": "Function _extract_semantic_chunks in codebase_context.py:\n    def _extract_semantic_chunks(self, filepath: Path) -> List[Dict[str, Any]]:\n        \"\"\"Extract functions, classes, and imports from a Python file\"\"\"\n        chunks = []\n        \n        try:\n            content = filepath.read_text(encoding='utf-8')\n        except Exception:\n            return chunks\n        \n        try:\n            tree = ast.parse(content)\n        except SyntaxError:\n      ...",
+      "code": "    def _extract_semantic_chunks(self, filepath: Path) -> List[Dict[str, Any]]:\n        \"\"\"Extract functions, classes, and imports from a Python file\"\"\"\n        chunks = []\n        \n        try:\n            content = filepath.read_text(encoding='utf-8')\n        except Exception:\n            return chunks\n        \n        try:\n            tree = ast.parse(content)\n        except SyntaxError:\n            # File might have syntax errors, skip detailed parsing\n            return self._create_fallback_chunk(filepath, content)\n        \n        # Extract imports (for understanding dependencies)\n        imports = []\n        for node in ast.walk(tree):\n            if isinstance(node, ast.Import):\n                imports.extend([alias.name for alias in node.names])\n            elif isinstance(node, ast.ImportFrom):\n                if node.module:\n                    module_name = node.module\n                    for alias in node.names:\n                        imports.append(f\"{module_name}.{alias.name}\")\n        \n        if imports:\n            chunks.append({\n                \"type\": \"imports\",\n                \"file\": str(filepath),\n                \"content\": f\"File {filepath.name} imports: {', '.join(imports[:10])}\",\n                \"code\": \"\\n\".join([f\"import {imp}\" for imp in imports[:5]]),\n                \"metadata\": {\n                    \"file\": str(filepath),\n                    \"type\": \"imports\",\n                    \"line\": 1\n                }\n            })\n        \n        # Extract functions\n        for node in ast.walk(tree):\n            if isinstance(node, ast.FunctionDef):\n                func_code = self._extract_node_code(content, node)\n                if func_code:\n                    chunks.append({\n                        \"type\": \"function\",\n                        \"file\": str(filepath),\n                        \"content\": f\"Function {node.name} in {filepath.name}:\\n{func_code[:400]}...\",\n                        \"code\": func_code,\n                        \"metadata\": {\n                            \"file\": str(filepath),\n                            \"type\": \"function\", \n                            \"name\": node.name,\n                            \"line\": node.lineno,\n                            \"args\": [arg.arg for arg in node.args.args] if hasattr(node.args, 'args') else []\n                        }\n                    })\n                    \n            elif isinstance(node, ast.ClassDef):\n                class_code = self._extract_node_code(content, node)\n                if class_code:\n                    chunks.append({\n                        \"type\": \"class\",\n                        \"file\": str(filepath),\n                        \"content\": f\"Class {node.name} in {filepath.name}:\\n{class_code[:400]}...\",\n                        \"code\": class_code,\n                        \"metadata\": {\n                            \"file\": str(filepath),\n                            \"type\": \"class\",\n                            \"name\": node.name,\n                            \"line\": node.lineno\n                        }\n                    })\n        \n        return chunks",
+      "metadata": {
+        "file": "codebase_context.py",
+        "type": "function",
+        "name": "_extract_semantic_chunks",
+        "line": 86,
+        "args": [
+          "self",
+          "filepath"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "codebase_context.py",
+      "content": "Function _extract_node_code in codebase_context.py:\n    def _extract_node_code(self, content: str, node: ast.AST) -> str:\n        \"\"\"Extract source code for an AST node\"\"\"\n        try:\n            lines = content.splitlines()\n            start_line = node.lineno - 1\n            \n            # Find end line by looking for the next function/class or end of indentation\n            end_line = len(lines)\n            if hasattr(node, 'end_lineno') and no...",
+      "code": "    def _extract_node_code(self, content: str, node: ast.AST) -> str:\n        \"\"\"Extract source code for an AST node\"\"\"\n        try:\n            lines = content.splitlines()\n            start_line = node.lineno - 1\n            \n            # Find end line by looking for the next function/class or end of indentation\n            end_line = len(lines)\n            if hasattr(node, 'end_lineno') and node.end_lineno:\n                end_line = node.end_lineno\n            else:\n                # Fallback: find end by indentation\n                base_indent = len(lines[start_line]) - len(lines[start_line].lstrip())\n                for i in range(start_line + 1, len(lines)):\n                    line = lines[i]\n                    if line.strip() and len(line) - len(line.lstrip()) <= base_indent:\n                        end_line = i\n                        break\n            \n            return \"\\n\".join(lines[start_line:end_line])\n        except Exception:\n            return \"\"",
+      "metadata": {
+        "file": "codebase_context.py",
+        "type": "function",
+        "name": "_extract_node_code",
+        "line": 162,
+        "args": [
+          "self",
+          "content",
+          "node"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "codebase_context.py",
+      "content": "Function _create_fallback_chunk in codebase_context.py:\n    def _create_fallback_chunk(self, filepath: Path, content: str) -> List[Dict[str, Any]]:\n        \"\"\"Create a simple chunk when AST parsing fails\"\"\"\n        return [{\n            \"type\": \"file_overview\",\n            \"file\": str(filepath),\n            \"content\": f\"File {filepath.name} overview:\\n{content[:500]}...\",\n            \"code\": content[:500],\n            \"metadata\": {\n                \"fil...",
+      "code": "    def _create_fallback_chunk(self, filepath: Path, content: str) -> List[Dict[str, Any]]:\n        \"\"\"Create a simple chunk when AST parsing fails\"\"\"\n        return [{\n            \"type\": \"file_overview\",\n            \"file\": str(filepath),\n            \"content\": f\"File {filepath.name} overview:\\n{content[:500]}...\",\n            \"code\": content[:500],\n            \"metadata\": {\n                \"file\": str(filepath),\n                \"type\": \"overview\",\n                \"line\": 1\n            }\n        }]",
+      "metadata": {
+        "file": "codebase_context.py",
+        "type": "function",
+        "name": "_create_fallback_chunk",
+        "line": 185,
+        "args": [
+          "self",
+          "filepath",
+          "content"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "codebase_context.py",
+      "content": "Function generate_embeddings in codebase_context.py:\n    def generate_embeddings(self, chunks: List[Dict[str, Any]]) -> Dict[str, Any]:\n        \"\"\"Generate embeddings for all code chunks\"\"\"\n        cache_key = self._get_project_hash()\n        cache_file = self.cache_dir / f\"embeddings_{cache_key}.json\"\n        \n        # Try to load from cache\n        if cache_file.exists():\n            try:\n                print(\"\ud83e\udde0 Loading cached codebase embedding...",
+      "code": "    def generate_embeddings(self, chunks: List[Dict[str, Any]]) -> Dict[str, Any]:\n        \"\"\"Generate embeddings for all code chunks\"\"\"\n        cache_key = self._get_project_hash()\n        cache_file = self.cache_dir / f\"embeddings_{cache_key}.json\"\n        \n        # Try to load from cache\n        if cache_file.exists():\n            try:\n                print(\"\ud83e\udde0 Loading cached codebase embeddings...\")\n                with open(cache_file, 'r') as f:\n                    cached_data = json.load(f)\n                    if cached_data.get(\"use_embeddings\") == self.use_embeddings:\n                        cached_data[\"chunks\"] = chunks  # Update chunks with latest\n                        return cached_data\n            except Exception:\n                pass\n        \n        print(f\"\ud83d\udd04 Generating context data for {len(chunks)} code chunks...\")\n        \n        embedding_data = {\n            \"chunks\": chunks,\n            \"cache_key\": cache_key,\n            \"use_embeddings\": self.use_embeddings,\n            \"generated_at\": time.time()\n        }\n        \n        if self.use_embeddings:\n            # Generate ML embeddings\n            texts = [chunk[\"content\"] for chunk in chunks]\n            try:\n                embeddings = self.model.encode(texts, show_progress_bar=True)\n                embedding_data[\"embeddings\"] = embeddings.tolist()\n                print(\"\u2705 Generated ML embeddings\")\n            except Exception as e:\n                print(f\"\u26a0\ufe0f  ML embedding failed ({e}), using text similarity\")\n                embedding_data[\"use_embeddings\"] = False\n                self.use_embeddings = False\n        \n        # Cache the results\n        try:\n            with open(cache_file, 'w') as f:\n                json.dump(embedding_data, f, indent=2)\n            print(f\"\ud83d\udcbe Cached context data to {cache_file}\")\n        except Exception as e:\n            print(f\"\u26a0\ufe0f  Could not cache embeddings: {e}\")\n        \n        return embedding_data",
+      "metadata": {
+        "file": "codebase_context.py",
+        "type": "function",
+        "name": "generate_embeddings",
+        "line": 199,
+        "args": [
+          "self",
+          "chunks"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "codebase_context.py",
+      "content": "Function find_relevant_context in codebase_context.py:\n    def find_relevant_context(self, changed_files: List[str], \n                            diff_content: str, embedding_data: Dict[str, Any], \n                            top_k: int = 5) -> List[Dict[str, Any]]:\n        \"\"\"Find most relevant codebase context for the changes\"\"\"\n        \n        if self.use_embeddings and \"embeddings\" in embedding_data:\n            return self._find_context_with_emb...",
+      "code": "    def find_relevant_context(self, changed_files: List[str], \n                            diff_content: str, embedding_data: Dict[str, Any], \n                            top_k: int = 5) -> List[Dict[str, Any]]:\n        \"\"\"Find most relevant codebase context for the changes\"\"\"\n        \n        if self.use_embeddings and \"embeddings\" in embedding_data:\n            return self._find_context_with_embeddings(\n                changed_files, diff_content, embedding_data, top_k\n            )\n        else:\n            return self._find_context_with_text(\n                changed_files, diff_content, embedding_data, top_k\n            )",
+      "metadata": {
+        "file": "codebase_context.py",
+        "type": "function",
+        "name": "find_relevant_context",
+        "line": 247,
+        "args": [
+          "self",
+          "changed_files",
+          "diff_content",
+          "embedding_data",
+          "top_k"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "codebase_context.py",
+      "content": "Function _find_context_with_embeddings in codebase_context.py:\n    def _find_context_with_embeddings(self, changed_files: List[str], \n                                    diff_content: str, embedding_data: Dict[str, Any], \n                                    top_k: int) -> List[Dict[str, Any]]:\n        \"\"\"Find context using ML embeddings\"\"\"\n        try:\n            import numpy as np\n            \n            # Create query from changes\n            query_parts ...",
+      "code": "    def _find_context_with_embeddings(self, changed_files: List[str], \n                                    diff_content: str, embedding_data: Dict[str, Any], \n                                    top_k: int) -> List[Dict[str, Any]]:\n        \"\"\"Find context using ML embeddings\"\"\"\n        try:\n            import numpy as np\n            \n            # Create query from changes\n            query_parts = []\n            for file_path in changed_files:\n                query_parts.append(f\"Changes in {Path(file_path).name}\")\n            query_parts.append(f\"Code changes: {diff_content[:1000]}\")\n            query_text = \"\\n\".join(query_parts)\n            \n            # Get query embedding\n            query_embedding = self.model.encode([query_text])\n            embeddings_array = np.array(embedding_data[\"embeddings\"])\n            \n            # Calculate similarity\n            similarities = np.dot(embeddings_array, query_embedding.T).flatten()\n            \n            # Get top-k most similar chunks\n            top_indices = np.argsort(similarities)[-top_k:][::-1]\n            \n            relevant_context = []\n            for idx in top_indices:\n                if idx >= len(embedding_data[\"chunks\"]):\n                    continue\n                    \n                chunk = embedding_data[\"chunks\"][idx]\n                similarity = float(similarities[idx])\n                \n                if similarity > 0.2:  # Threshold for relevance\n                    relevant_context.append({\n                        \"content\": chunk[\"code\"][:800],\n                        \"file\": chunk[\"metadata\"][\"file\"],\n                        \"type\": chunk[\"metadata\"][\"type\"],\n                        \"name\": chunk[\"metadata\"].get(\"name\", \"\"),\n                        \"line\": chunk[\"metadata\"].get(\"line\", 1),\n                        \"similarity\": similarity\n                    })\n            \n            return relevant_context\n            \n        except Exception as e:\n            print(f\"\u26a0\ufe0f  Embedding similarity failed ({e}), falling back to text similarity\")\n            return self._find_context_with_text(changed_files, diff_content, embedding_data, top_k)",
+      "metadata": {
+        "file": "codebase_context.py",
+        "type": "function",
+        "name": "_find_context_with_embeddings",
+        "line": 261,
+        "args": [
+          "self",
+          "changed_files",
+          "diff_content",
+          "embedding_data",
+          "top_k"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "codebase_context.py",
+      "content": "Function _find_context_with_text in codebase_context.py:\n    def _find_context_with_text(self, changed_files: List[str], \n                              diff_content: str, embedding_data: Dict[str, Any], \n                              top_k: int) -> List[Dict[str, Any]]:\n        \"\"\"Find context using simple text similarity\"\"\"\n        \n        # Extract keywords from changes\n        change_keywords = set()\n        \n        # Add file names\n        for fil...",
+      "code": "    def _find_context_with_text(self, changed_files: List[str], \n                              diff_content: str, embedding_data: Dict[str, Any], \n                              top_k: int) -> List[Dict[str, Any]]:\n        \"\"\"Find context using simple text similarity\"\"\"\n        \n        # Extract keywords from changes\n        change_keywords = set()\n        \n        # Add file names\n        for file_path in changed_files:\n            change_keywords.add(Path(file_path).stem)\n        \n        # Extract function/variable names from diff\n        words = re.findall(r'\\b[a-zA-Z_][a-zA-Z0-9_]+\\b', diff_content)\n        change_keywords.update(word for word in words if len(word) > 2)\n        \n        # Score chunks based on keyword overlap\n        scored_chunks = []\n        for chunk in embedding_data[\"chunks\"]:\n            score = 0\n            chunk_text = chunk[\"content\"].lower()\n            \n            # Boost score for same file\n            if any(Path(f).stem in chunk[\"file\"] for f in changed_files):\n                score += 10\n            \n            # Count keyword matches\n            for keyword in change_keywords:\n                if keyword.lower() in chunk_text:\n                    score += 1\n            \n            if score > 0:\n                scored_chunks.append((score, chunk))\n        \n        # Sort by score and take top-k\n        scored_chunks.sort(key=lambda x: x[0], reverse=True)\n        \n        relevant_context = []\n        for score, chunk in scored_chunks[:top_k]:\n            relevant_context.append({\n                \"content\": chunk[\"code\"][:800],\n                \"file\": chunk[\"metadata\"][\"file\"],\n                \"type\": chunk[\"metadata\"][\"type\"],\n                \"name\": chunk[\"metadata\"].get(\"name\", \"\"),\n                \"line\": chunk[\"metadata\"].get(\"line\", 1),\n                \"similarity\": score / 10.0  # Normalize score\n            })\n        \n        return relevant_context",
+      "metadata": {
+        "file": "codebase_context.py",
+        "type": "function",
+        "name": "_find_context_with_text",
+        "line": 309,
+        "args": [
+          "self",
+          "changed_files",
+          "diff_content",
+          "embedding_data",
+          "top_k"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "codebase_context.py",
+      "content": "Function _get_project_hash in codebase_context.py:\n    def _get_project_hash(self) -> str:\n        \"\"\"Generate a hash representing the current project state\"\"\"\n        # Simple hash based on file modification times\n        hash_input = \"\"\n        for py_file in Path(\".\").rglob(\"*.py\"):\n            if not self._should_exclude(py_file, [\".git\", \"__pycache__\"]):\n                try:\n                    mtime = py_file.stat().st_mtime\n                ...",
+      "code": "    def _get_project_hash(self) -> str:\n        \"\"\"Generate a hash representing the current project state\"\"\"\n        # Simple hash based on file modification times\n        hash_input = \"\"\n        for py_file in Path(\".\").rglob(\"*.py\"):\n            if not self._should_exclude(py_file, [\".git\", \"__pycache__\"]):\n                try:\n                    mtime = py_file.stat().st_mtime\n                    hash_input += f\"{py_file}:{mtime};\"\n                except Exception:\n                    continue\n        \n        return hashlib.md5(hash_input.encode()).hexdigest()[:12]",
+      "metadata": {
+        "file": "codebase_context.py",
+        "type": "function",
+        "name": "_get_project_hash",
+        "line": 359,
+        "args": [
+          "self"
+        ]
+      }
+    },
+    {
+      "type": "imports",
+      "file": "test_contextual.py",
+      "content": "File test_contextual.py imports: subprocess, os, json",
+      "code": "import subprocess\nimport os\nimport json",
+      "metadata": {
+        "file": "test_contextual.py",
+        "type": "imports",
+        "line": 1
+      }
+    },
+    {
+      "type": "function",
+      "file": "test_contextual.py",
+      "content": "Function new_function in test_contextual.py:\ndef new_function():\n    # This should trigger context-aware suggestions based on existing patterns\n    result = subprocess.run(\"ls -la\", shell=True, capture_output=True)\n    \n    # Similar pattern exists in cli.py - should suggest consistency\n    data = json.loads('{\"test\": \"value\"}')\n    \n    # This follows a different pattern than existing codebase\n    print(\"Hello world!\")\n    return data...",
+      "code": "def new_function():\n    # This should trigger context-aware suggestions based on existing patterns\n    result = subprocess.run(\"ls -la\", shell=True, capture_output=True)\n    \n    # Similar pattern exists in cli.py - should suggest consistency\n    data = json.loads('{\"test\": \"value\"}')\n    \n    # This follows a different pattern than existing codebase\n    print(\"Hello world!\")\n    return data",
+      "metadata": {
+        "file": "test_contextual.py",
+        "type": "function",
+        "name": "new_function",
+        "line": 5,
+        "args": []
+      }
+    },
+    {
+      "type": "class",
+      "file": "test_contextual.py",
+      "content": "Class NewFeature in test_contextual.py:\nclass NewFeature:\n    def __init__(self):\n        self.config = {}\n    \n    def process_data(self, input_data):\n        try:\n            result = subprocess.run([\"echo\", \"test\"], capture_output=True, text=True)\n            return result.stdout\n        except Exception as e:\n            print(f\"Error: {e}\")\n            return None...",
+      "code": "class NewFeature:\n    def __init__(self):\n        self.config = {}\n    \n    def process_data(self, input_data):\n        try:\n            result = subprocess.run([\"echo\", \"test\"], capture_output=True, text=True)\n            return result.stdout\n        except Exception as e:\n            print(f\"Error: {e}\")\n            return None",
+      "metadata": {
+        "file": "test_contextual.py",
+        "type": "class",
+        "name": "NewFeature",
+        "line": 16
+      }
+    },
+    {
+      "type": "function",
+      "file": "test_contextual.py",
+      "content": "Function __init__ in test_contextual.py:\n    def __init__(self):\n        self.config = {}...",
+      "code": "    def __init__(self):\n        self.config = {}",
+      "metadata": {
+        "file": "test_contextual.py",
+        "type": "function",
+        "name": "__init__",
+        "line": 17,
+        "args": [
+          "self"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "test_contextual.py",
+      "content": "Function process_data in test_contextual.py:\n    def process_data(self, input_data):\n        try:\n            result = subprocess.run([\"echo\", \"test\"], capture_output=True, text=True)\n            return result.stdout\n        except Exception as e:\n            print(f\"Error: {e}\")\n            return None...",
+      "code": "    def process_data(self, input_data):\n        try:\n            result = subprocess.run([\"echo\", \"test\"], capture_output=True, text=True)\n            return result.stdout\n        except Exception as e:\n            print(f\"Error: {e}\")\n            return None",
+      "metadata": {
+        "file": "test_contextual.py",
+        "type": "function",
+        "name": "process_data",
+        "line": 20,
+        "args": [
+          "self",
+          "input_data"
+        ]
+      }
+    },
+    {
+      "type": "imports",
+      "file": "feedback_tracker.py",
+      "content": "File feedback_tracker.py imports: json, hashlib, datetime.datetime, pathlib.Path, typing.Dict, typing.List, typing.Optional, typing.Any, dataclasses.dataclass, dataclasses.asdict",
+      "code": "import json\nimport hashlib\nimport datetime.datetime\nimport pathlib.Path\nimport typing.Dict",
+      "metadata": {
+        "file": "feedback_tracker.py",
+        "type": "imports",
+        "line": 1
+      }
+    },
+    {
+      "type": "class",
+      "file": "feedback_tracker.py",
+      "content": "Class FeedbackStatus in feedback_tracker.py:\nclass FeedbackStatus(Enum):\n    \"\"\"Possible feedback statuses for findings\"\"\"\n    OPEN = \"open\"\n    RESOLVED = \"resolved\"\n    FALSE_POSITIVE = \"false_positive\" \n    ACKNOWLEDGED = \"acknowledged\"\n    WILL_FIX_LATER = \"will_fix_later\"\n    IN_PROGRESS = \"in_progress\"...",
+      "code": "class FeedbackStatus(Enum):\n    \"\"\"Possible feedback statuses for findings\"\"\"\n    OPEN = \"open\"\n    RESOLVED = \"resolved\"\n    FALSE_POSITIVE = \"false_positive\" \n    ACKNOWLEDGED = \"acknowledged\"\n    WILL_FIX_LATER = \"will_fix_later\"\n    IN_PROGRESS = \"in_progress\"",
+      "metadata": {
+        "file": "feedback_tracker.py",
+        "type": "class",
+        "name": "FeedbackStatus",
+        "line": 9
+      }
+    },
+    {
+      "type": "class",
+      "file": "feedback_tracker.py",
+      "content": "Class FeedbackEntry in feedback_tracker.py:\nclass FeedbackEntry:\n    \"\"\"Represents a single feedback entry\"\"\"\n    timestamp: str\n    author: str\n    action: str  # \"comment\", \"status_change\", \"created\"\n    message: str\n    status: Optional[str] = None...",
+      "code": "class FeedbackEntry:\n    \"\"\"Represents a single feedback entry\"\"\"\n    timestamp: str\n    author: str\n    action: str  # \"comment\", \"status_change\", \"created\"\n    message: str\n    status: Optional[str] = None",
+      "metadata": {
+        "file": "feedback_tracker.py",
+        "type": "class",
+        "name": "FeedbackEntry",
+        "line": 19
+      }
+    },
+    {
+      "type": "class",
+      "file": "feedback_tracker.py",
+      "content": "Class FindingFeedback in feedback_tracker.py:\nclass FindingFeedback:\n    \"\"\"Complete feedback record for a finding\"\"\"\n    finding_id: str\n    file: str\n    line: int\n    rule: str\n    title: str\n    status: str = FeedbackStatus.OPEN.value\n    entries: List[FeedbackEntry] = None\n    created_at: str = None\n    updated_at: str = None\n    \n    def __post_init__(self):\n        if self.entries is None:\n            self.entries = []\n        if self....",
+      "code": "class FindingFeedback:\n    \"\"\"Complete feedback record for a finding\"\"\"\n    finding_id: str\n    file: str\n    line: int\n    rule: str\n    title: str\n    status: str = FeedbackStatus.OPEN.value\n    entries: List[FeedbackEntry] = None\n    created_at: str = None\n    updated_at: str = None\n    \n    def __post_init__(self):\n        if self.entries is None:\n            self.entries = []\n        if self.created_at is None:\n            self.created_at = datetime.now().isoformat()\n        if self.updated_at is None:\n            self.updated_at = self.created_at",
+      "metadata": {
+        "file": "feedback_tracker.py",
+        "type": "class",
+        "name": "FindingFeedback",
+        "line": 28
+      }
+    },
+    {
+      "type": "class",
+      "file": "feedback_tracker.py",
+      "content": "Class FeedbackTracker in feedback_tracker.py:\nclass FeedbackTracker:\n    \"\"\"Manages feedback and discussions for code review findings\"\"\"\n    \n    def __init__(self, feedback_file: str = \".ai_review_feedback.json\"):\n        self.feedback_file = Path(feedback_file)\n        self.feedback_data: Dict[str, FindingFeedback] = {}\n        self.load_feedback()\n    \n    def generate_finding_id(self, finding: Dict[str, Any]) -> str:\n        \"\"\"Generate a...",
+      "code": "class FeedbackTracker:\n    \"\"\"Manages feedback and discussions for code review findings\"\"\"\n    \n    def __init__(self, feedback_file: str = \".ai_review_feedback.json\"):\n        self.feedback_file = Path(feedback_file)\n        self.feedback_data: Dict[str, FindingFeedback] = {}\n        self.load_feedback()\n    \n    def generate_finding_id(self, finding: Dict[str, Any]) -> str:\n        \"\"\"Generate a consistent ID for a finding\"\"\"\n        # Create ID from file, line, rule, and title hash\n        content = f\"{finding.get('file', '')}{finding.get('line', 0)}{finding.get('rule', '')}{finding.get('title', '')}\"\n        return hashlib.md5(content.encode()).hexdigest()[:12]\n    \n    def load_feedback(self):\n        \"\"\"Load existing feedback from file\"\"\"\n        if not self.feedback_file.exists():\n            return\n            \n        try:\n            with open(self.feedback_file, 'r') as f:\n                data = json.load(f)\n                \n            for finding_id, feedback_dict in data.items():\n                # Convert entries back to FeedbackEntry objects\n                entries = [FeedbackEntry(**entry) for entry in feedback_dict.get('entries', [])]\n                feedback_dict['entries'] = entries\n                \n                self.feedback_data[finding_id] = FindingFeedback(**feedback_dict)\n                \n        except (json.JSONDecodeError, TypeError, KeyError) as e:\n            print(f\"\u26a0\ufe0f  Warning: Could not load feedback data: {e}\")\n    \n    def save_feedback(self):\n        \"\"\"Save feedback data to file\"\"\"\n        try:\n            # Convert to serializable format\n            data = {}\n            for finding_id, feedback in self.feedback_data.items():\n                feedback_dict = asdict(feedback)\n                data[finding_id] = feedback_dict\n                \n            with open(self.feedback_file, 'w') as f:\n                json.dump(data, f, indent=2)\n                \n        except Exception as e:\n            print(f\"\u26a0\ufe0f  Warning: Could not save feedback data: {e}\")\n    \n    def add_feedback(self, finding_id: str, action: str, message: str = \"\", \n                    author: str = \"developer\", status: str = None) -> bool:\n        \"\"\"Add feedback entry to a finding\"\"\"\n        if finding_id not in self.feedback_data:\n            return False\n            \n        entry = FeedbackEntry(\n            timestamp=datetime.now().isoformat(),\n            author=author,\n            action=action,\n            message=message,\n            status=status\n        )\n        \n        feedback = self.feedback_data[finding_id]\n        feedback.entries.append(entry)\n        feedback.updated_at = entry.timestamp\n        \n        if status:\n            feedback.status = status\n            \n        self.save_feedback()\n        return True\n    \n    def create_finding_feedback(self, finding: Dict[str, Any]) -> str:\n        \"\"\"Create feedback record for a new finding\"\"\"\n        finding_id = self.generate_finding_id(finding)\n        \n        if finding_id not in self.feedback_data:\n            feedback = FindingFeedback(\n                finding_id=finding_id,\n                file=finding.get('file', ''),\n                line=finding.get('line', 0),\n                rule=finding.get('rule', ''),\n                title=finding.get('title', ''),\n                status=FeedbackStatus.OPEN.value\n            )\n            \n            # Add creation entry\n            feedback.entries.append(FeedbackEntry(\n                timestamp=feedback.created_at,\n                author=\"system\",\n                action=\"created\",\n                message=f\"Finding created: {finding.get('title', 'Unknown issue')}\"\n            ))\n            \n            self.feedback_data[finding_id] = feedback\n            self.save_feedback()\n            \n        return finding_id\n    \n    def mark_resolved(self, finding_id: str, comment: str = \"\", author: str = \"developer\") -> bool:\n        \"\"\"Mark a finding as resolved\"\"\"\n        return self.change_status(finding_id, FeedbackStatus.RESOLVED.value, comment, author)\n    \n    def mark_false_positive(self, finding_id: str, comment: str = \"\", author: str = \"developer\") -> bool:\n        \"\"\"Mark a finding as false positive\"\"\"\n        return self.change_status(finding_id, FeedbackStatus.FALSE_POSITIVE.value, comment, author)\n    \n    def change_status(self, finding_id: str, status: str, comment: str = \"\", author: str = \"developer\") -> bool:\n        \"\"\"Change status of a finding\"\"\"\n        if finding_id not in self.feedback_data:\n            return False\n            \n        message = f\"Status changed to {status}\"\n        if comment:\n            message += f\": {comment}\"\n            \n        return self.add_feedback(finding_id, \"status_change\", message, author, status)\n    \n    def add_comment(self, finding_id: str, comment: str, author: str = \"developer\") -> bool:\n        \"\"\"Add a comment to a finding\"\"\"\n        return self.add_feedback(finding_id, \"comment\", comment, author)\n    \n    def get_finding_feedback(self, finding_id: str) -> Optional[FindingFeedback]:\n        \"\"\"Get feedback for a specific finding\"\"\"\n        return self.feedback_data.get(finding_id)\n    \n    def get_all_feedback(self) -> Dict[str, FindingFeedback]:\n        \"\"\"Get all feedback data\"\"\"\n        return self.feedback_data\n    \n    def filter_by_status(self, status: str) -> List[FindingFeedback]:\n        \"\"\"Get all findings with specific status\"\"\"\n        return [feedback for feedback in self.feedback_data.values() \n                if feedback.status == status]\n    \n    def get_statistics(self) -> Dict[str, int]:\n        \"\"\"Get feedback statistics\"\"\"\n        stats = {}\n        for status in FeedbackStatus:\n            stats[status.value] = len(self.filter_by_status(status.value))\n        return stats\n    \n    def annotate_findings(self, findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:\n        \"\"\"Add feedback information to findings\"\"\"\n        annotated_findings = []\n        \n        for finding in findings:\n            finding_id = self.generate_finding_id(finding)\n            \n            # Create feedback record if it doesn't exist\n            if finding_id not in self.feedback_data:\n                self.create_finding_feedback(finding)\n            \n            # Add feedback info to finding\n            annotated_finding = finding.copy()\n            feedback = self.feedback_data[finding_id]\n            \n            annotated_finding.update({\n                \"finding_id\": finding_id,\n                \"feedback_status\": feedback.status,\n                \"feedback_count\": len(feedback.entries),\n                \"last_updated\": feedback.updated_at\n            })\n            \n            annotated_findings.append(annotated_finding)\n            \n        return annotated_findings\n    \n    def search_findings(self, query: str) -> List[FindingFeedback]:\n        \"\"\"Search findings by file, rule, or title\"\"\"\n        query = query.lower()\n        results = []\n        \n        for feedback in self.feedback_data.values():\n            if (query in feedback.file.lower() or \n                query in feedback.rule.lower() or \n                query in feedback.title.lower()):\n                results.append(feedback)\n                \n        return results\n    \n    def list_findings(self, status: str = None, author: str = None) -> Dict[str, Dict]:\n        \"\"\"List findings with optional filtering\"\"\"\n        results = {}\n        \n        for finding_id, feedback in self.feedback_data.items():\n            # Filter by status if provided\n            if status and feedback.status != status:\n                continue\n            \n            # Filter by author if provided (check entries)\n            if author:\n                author_found = False\n                for entry in feedback.entries:\n                    if entry.author == author:\n                        author_found = True\n                        break\n                if not author_found:\n                    continue\n            \n            # Convert to dict format for display\n            results[finding_id] = {\n                \"status\": feedback.status,\n                \"file\": feedback.file,\n                \"line\": feedback.line,\n                \"rule\": feedback.rule,\n                \"title\": feedback.title,\n                \"discussion\": feedback.entries,\n                \"created_at\": feedback.created_at,\n                \"updated_at\": feedback.updated_at\n            }\n            \n        return results\n    \n    def mark_will_fix_later(self, finding_id: str, comment: str = \"\", author: str = \"developer\") -> bool:\n        \"\"\"Mark a finding as will fix later\"\"\"\n        return self.change_status(finding_id, FeedbackStatus.WILL_FIX_LATER.value, comment, author)\n    \n    def get_finding_stats(self) -> Dict[str, Any]:\n        \"\"\"Get comprehensive feedback statistics\"\"\"\n        stats = self.get_statistics()\n        \n        # Add additional stats\n        total_findings = len(self.feedback_data)\n        total_comments = sum(len(feedback.entries) for feedback in self.feedback_data.values())\n        \n        # Calculate resolution rate\n        resolved_count = stats.get(FeedbackStatus.RESOLVED.value, 0)\n        false_positive_count = stats.get(FeedbackStatus.FALSE_POSITIVE.value, 0)\n        resolution_rate = 0\n        if total_findings > 0:\n            resolution_rate = ((resolved_count + false_positive_count) / total_findings) * 100\n        \n        return {\n            \"total_findings\": total_findings,\n            \"total_comments\": total_comments,\n            \"resolution_rate\": round(resolution_rate, 1),\n            \"by_status\": stats,\n            \"active_findings\": total_findings - resolved_count - false_positive_count\n        }\n    \n    def import_findings_for_tracking(self, findings: List[Dict[str, Any]]) -> int:\n        \"\"\"Import findings and create feedback records for new ones\"\"\"\n        imported_count = 0\n        \n        for finding in findings:\n            finding_id = self.create_finding_feedback(finding)\n            if finding_id not in self.feedback_data:\n                imported_count += 1\n                \n        return imported_count",
+      "metadata": {
+        "file": "feedback_tracker.py",
+        "type": "class",
+        "name": "FeedbackTracker",
+        "line": 48
+      }
+    },
+    {
+      "type": "function",
+      "file": "feedback_tracker.py",
+      "content": "Function __post_init__ in feedback_tracker.py:\n    def __post_init__(self):\n        if self.entries is None:\n            self.entries = []\n        if self.created_at is None:\n            self.created_at = datetime.now().isoformat()\n        if self.updated_at is None:\n            self.updated_at = self.created_at...",
+      "code": "    def __post_init__(self):\n        if self.entries is None:\n            self.entries = []\n        if self.created_at is None:\n            self.created_at = datetime.now().isoformat()\n        if self.updated_at is None:\n            self.updated_at = self.created_at",
+      "metadata": {
+        "file": "feedback_tracker.py",
+        "type": "function",
+        "name": "__post_init__",
+        "line": 40,
+        "args": [
+          "self"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "feedback_tracker.py",
+      "content": "Function __init__ in feedback_tracker.py:\n    def __init__(self, feedback_file: str = \".ai_review_feedback.json\"):\n        self.feedback_file = Path(feedback_file)\n        self.feedback_data: Dict[str, FindingFeedback] = {}\n        self.load_feedback()...",
+      "code": "    def __init__(self, feedback_file: str = \".ai_review_feedback.json\"):\n        self.feedback_file = Path(feedback_file)\n        self.feedback_data: Dict[str, FindingFeedback] = {}\n        self.load_feedback()",
+      "metadata": {
+        "file": "feedback_tracker.py",
+        "type": "function",
+        "name": "__init__",
+        "line": 51,
+        "args": [
+          "self",
+          "feedback_file"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "feedback_tracker.py",
+      "content": "Function generate_finding_id in feedback_tracker.py:\n    def generate_finding_id(self, finding: Dict[str, Any]) -> str:\n        \"\"\"Generate a consistent ID for a finding\"\"\"\n        # Create ID from file, line, rule, and title hash\n        content = f\"{finding.get('file', '')}{finding.get('line', 0)}{finding.get('rule', '')}{finding.get('title', '')}\"\n        return hashlib.md5(content.encode()).hexdigest()[:12]...",
+      "code": "    def generate_finding_id(self, finding: Dict[str, Any]) -> str:\n        \"\"\"Generate a consistent ID for a finding\"\"\"\n        # Create ID from file, line, rule, and title hash\n        content = f\"{finding.get('file', '')}{finding.get('line', 0)}{finding.get('rule', '')}{finding.get('title', '')}\"\n        return hashlib.md5(content.encode()).hexdigest()[:12]",
+      "metadata": {
+        "file": "feedback_tracker.py",
+        "type": "function",
+        "name": "generate_finding_id",
+        "line": 56,
+        "args": [
+          "self",
+          "finding"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "feedback_tracker.py",
+      "content": "Function load_feedback in feedback_tracker.py:\n    def load_feedback(self):\n        \"\"\"Load existing feedback from file\"\"\"\n        if not self.feedback_file.exists():\n            return\n            \n        try:\n            with open(self.feedback_file, 'r') as f:\n                data = json.load(f)\n                \n            for finding_id, feedback_dict in data.items():\n                # Convert entries back to FeedbackEntry objects\n      ...",
+      "code": "    def load_feedback(self):\n        \"\"\"Load existing feedback from file\"\"\"\n        if not self.feedback_file.exists():\n            return\n            \n        try:\n            with open(self.feedback_file, 'r') as f:\n                data = json.load(f)\n                \n            for finding_id, feedback_dict in data.items():\n                # Convert entries back to FeedbackEntry objects\n                entries = [FeedbackEntry(**entry) for entry in feedback_dict.get('entries', [])]\n                feedback_dict['entries'] = entries\n                \n                self.feedback_data[finding_id] = FindingFeedback(**feedback_dict)\n                \n        except (json.JSONDecodeError, TypeError, KeyError) as e:\n            print(f\"\u26a0\ufe0f  Warning: Could not load feedback data: {e}\")",
+      "metadata": {
+        "file": "feedback_tracker.py",
+        "type": "function",
+        "name": "load_feedback",
+        "line": 62,
+        "args": [
+          "self"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "feedback_tracker.py",
+      "content": "Function save_feedback in feedback_tracker.py:\n    def save_feedback(self):\n        \"\"\"Save feedback data to file\"\"\"\n        try:\n            # Convert to serializable format\n            data = {}\n            for finding_id, feedback in self.feedback_data.items():\n                feedback_dict = asdict(feedback)\n                data[finding_id] = feedback_dict\n                \n            with open(self.feedback_file, 'w') as f:\n              ...",
+      "code": "    def save_feedback(self):\n        \"\"\"Save feedback data to file\"\"\"\n        try:\n            # Convert to serializable format\n            data = {}\n            for finding_id, feedback in self.feedback_data.items():\n                feedback_dict = asdict(feedback)\n                data[finding_id] = feedback_dict\n                \n            with open(self.feedback_file, 'w') as f:\n                json.dump(data, f, indent=2)\n                \n        except Exception as e:\n            print(f\"\u26a0\ufe0f  Warning: Could not save feedback data: {e}\")",
+      "metadata": {
+        "file": "feedback_tracker.py",
+        "type": "function",
+        "name": "save_feedback",
+        "line": 81,
+        "args": [
+          "self"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "feedback_tracker.py",
+      "content": "Function add_feedback in feedback_tracker.py:\n    def add_feedback(self, finding_id: str, action: str, message: str = \"\", \n                    author: str = \"developer\", status: str = None) -> bool:\n        \"\"\"Add feedback entry to a finding\"\"\"\n        if finding_id not in self.feedback_data:\n            return False\n            \n        entry = FeedbackEntry(\n            timestamp=datetime.now().isoformat(),\n            author=author,\n      ...",
+      "code": "    def add_feedback(self, finding_id: str, action: str, message: str = \"\", \n                    author: str = \"developer\", status: str = None) -> bool:\n        \"\"\"Add feedback entry to a finding\"\"\"\n        if finding_id not in self.feedback_data:\n            return False\n            \n        entry = FeedbackEntry(\n            timestamp=datetime.now().isoformat(),\n            author=author,\n            action=action,\n            message=message,\n            status=status\n        )\n        \n        feedback = self.feedback_data[finding_id]\n        feedback.entries.append(entry)\n        feedback.updated_at = entry.timestamp\n        \n        if status:\n            feedback.status = status\n            \n        self.save_feedback()\n        return True",
+      "metadata": {
+        "file": "feedback_tracker.py",
+        "type": "function",
+        "name": "add_feedback",
+        "line": 96,
+        "args": [
+          "self",
+          "finding_id",
+          "action",
+          "message",
+          "author",
+          "status"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "feedback_tracker.py",
+      "content": "Function create_finding_feedback in feedback_tracker.py:\n    def create_finding_feedback(self, finding: Dict[str, Any]) -> str:\n        \"\"\"Create feedback record for a new finding\"\"\"\n        finding_id = self.generate_finding_id(finding)\n        \n        if finding_id not in self.feedback_data:\n            feedback = FindingFeedback(\n                finding_id=finding_id,\n                file=finding.get('file', ''),\n                line=finding.get('li...",
+      "code": "    def create_finding_feedback(self, finding: Dict[str, Any]) -> str:\n        \"\"\"Create feedback record for a new finding\"\"\"\n        finding_id = self.generate_finding_id(finding)\n        \n        if finding_id not in self.feedback_data:\n            feedback = FindingFeedback(\n                finding_id=finding_id,\n                file=finding.get('file', ''),\n                line=finding.get('line', 0),\n                rule=finding.get('rule', ''),\n                title=finding.get('title', ''),\n                status=FeedbackStatus.OPEN.value\n            )\n            \n            # Add creation entry\n            feedback.entries.append(FeedbackEntry(\n                timestamp=feedback.created_at,\n                author=\"system\",\n                action=\"created\",\n                message=f\"Finding created: {finding.get('title', 'Unknown issue')}\"\n            ))\n            \n            self.feedback_data[finding_id] = feedback\n            self.save_feedback()\n            \n        return finding_id",
+      "metadata": {
+        "file": "feedback_tracker.py",
+        "type": "function",
+        "name": "create_finding_feedback",
+        "line": 120,
+        "args": [
+          "self",
+          "finding"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "feedback_tracker.py",
+      "content": "Function mark_resolved in feedback_tracker.py:\n    def mark_resolved(self, finding_id: str, comment: str = \"\", author: str = \"developer\") -> bool:\n        \"\"\"Mark a finding as resolved\"\"\"\n        return self.change_status(finding_id, FeedbackStatus.RESOLVED.value, comment, author)...",
+      "code": "    def mark_resolved(self, finding_id: str, comment: str = \"\", author: str = \"developer\") -> bool:\n        \"\"\"Mark a finding as resolved\"\"\"\n        return self.change_status(finding_id, FeedbackStatus.RESOLVED.value, comment, author)",
+      "metadata": {
+        "file": "feedback_tracker.py",
+        "type": "function",
+        "name": "mark_resolved",
+        "line": 147,
+        "args": [
+          "self",
+          "finding_id",
+          "comment",
+          "author"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "feedback_tracker.py",
+      "content": "Function mark_false_positive in feedback_tracker.py:\n    def mark_false_positive(self, finding_id: str, comment: str = \"\", author: str = \"developer\") -> bool:\n        \"\"\"Mark a finding as false positive\"\"\"\n        return self.change_status(finding_id, FeedbackStatus.FALSE_POSITIVE.value, comment, author)...",
+      "code": "    def mark_false_positive(self, finding_id: str, comment: str = \"\", author: str = \"developer\") -> bool:\n        \"\"\"Mark a finding as false positive\"\"\"\n        return self.change_status(finding_id, FeedbackStatus.FALSE_POSITIVE.value, comment, author)",
+      "metadata": {
+        "file": "feedback_tracker.py",
+        "type": "function",
+        "name": "mark_false_positive",
+        "line": 151,
+        "args": [
+          "self",
+          "finding_id",
+          "comment",
+          "author"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "feedback_tracker.py",
+      "content": "Function change_status in feedback_tracker.py:\n    def change_status(self, finding_id: str, status: str, comment: str = \"\", author: str = \"developer\") -> bool:\n        \"\"\"Change status of a finding\"\"\"\n        if finding_id not in self.feedback_data:\n            return False\n            \n        message = f\"Status changed to {status}\"\n        if comment:\n            message += f\": {comment}\"\n            \n        return self.add_feedback(finding...",
+      "code": "    def change_status(self, finding_id: str, status: str, comment: str = \"\", author: str = \"developer\") -> bool:\n        \"\"\"Change status of a finding\"\"\"\n        if finding_id not in self.feedback_data:\n            return False\n            \n        message = f\"Status changed to {status}\"\n        if comment:\n            message += f\": {comment}\"\n            \n        return self.add_feedback(finding_id, \"status_change\", message, author, status)",
+      "metadata": {
+        "file": "feedback_tracker.py",
+        "type": "function",
+        "name": "change_status",
+        "line": 155,
+        "args": [
+          "self",
+          "finding_id",
+          "status",
+          "comment",
+          "author"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "feedback_tracker.py",
+      "content": "Function add_comment in feedback_tracker.py:\n    def add_comment(self, finding_id: str, comment: str, author: str = \"developer\") -> bool:\n        \"\"\"Add a comment to a finding\"\"\"\n        return self.add_feedback(finding_id, \"comment\", comment, author)...",
+      "code": "    def add_comment(self, finding_id: str, comment: str, author: str = \"developer\") -> bool:\n        \"\"\"Add a comment to a finding\"\"\"\n        return self.add_feedback(finding_id, \"comment\", comment, author)",
+      "metadata": {
+        "file": "feedback_tracker.py",
+        "type": "function",
+        "name": "add_comment",
+        "line": 166,
+        "args": [
+          "self",
+          "finding_id",
+          "comment",
+          "author"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "feedback_tracker.py",
+      "content": "Function get_finding_feedback in feedback_tracker.py:\n    def get_finding_feedback(self, finding_id: str) -> Optional[FindingFeedback]:\n        \"\"\"Get feedback for a specific finding\"\"\"\n        return self.feedback_data.get(finding_id)...",
+      "code": "    def get_finding_feedback(self, finding_id: str) -> Optional[FindingFeedback]:\n        \"\"\"Get feedback for a specific finding\"\"\"\n        return self.feedback_data.get(finding_id)",
+      "metadata": {
+        "file": "feedback_tracker.py",
+        "type": "function",
+        "name": "get_finding_feedback",
+        "line": 170,
+        "args": [
+          "self",
+          "finding_id"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "feedback_tracker.py",
+      "content": "Function get_all_feedback in feedback_tracker.py:\n    def get_all_feedback(self) -> Dict[str, FindingFeedback]:\n        \"\"\"Get all feedback data\"\"\"\n        return self.feedback_data...",
+      "code": "    def get_all_feedback(self) -> Dict[str, FindingFeedback]:\n        \"\"\"Get all feedback data\"\"\"\n        return self.feedback_data",
+      "metadata": {
+        "file": "feedback_tracker.py",
+        "type": "function",
+        "name": "get_all_feedback",
+        "line": 174,
+        "args": [
+          "self"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "feedback_tracker.py",
+      "content": "Function filter_by_status in feedback_tracker.py:\n    def filter_by_status(self, status: str) -> List[FindingFeedback]:\n        \"\"\"Get all findings with specific status\"\"\"\n        return [feedback for feedback in self.feedback_data.values() \n                if feedback.status == status]...",
+      "code": "    def filter_by_status(self, status: str) -> List[FindingFeedback]:\n        \"\"\"Get all findings with specific status\"\"\"\n        return [feedback for feedback in self.feedback_data.values() \n                if feedback.status == status]",
+      "metadata": {
+        "file": "feedback_tracker.py",
+        "type": "function",
+        "name": "filter_by_status",
+        "line": 178,
+        "args": [
+          "self",
+          "status"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "feedback_tracker.py",
+      "content": "Function get_statistics in feedback_tracker.py:\n    def get_statistics(self) -> Dict[str, int]:\n        \"\"\"Get feedback statistics\"\"\"\n        stats = {}\n        for status in FeedbackStatus:\n            stats[status.value] = len(self.filter_by_status(status.value))\n        return stats...",
+      "code": "    def get_statistics(self) -> Dict[str, int]:\n        \"\"\"Get feedback statistics\"\"\"\n        stats = {}\n        for status in FeedbackStatus:\n            stats[status.value] = len(self.filter_by_status(status.value))\n        return stats",
+      "metadata": {
+        "file": "feedback_tracker.py",
+        "type": "function",
+        "name": "get_statistics",
+        "line": 183,
+        "args": [
+          "self"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "feedback_tracker.py",
+      "content": "Function annotate_findings in feedback_tracker.py:\n    def annotate_findings(self, findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:\n        \"\"\"Add feedback information to findings\"\"\"\n        annotated_findings = []\n        \n        for finding in findings:\n            finding_id = self.generate_finding_id(finding)\n            \n            # Create feedback record if it doesn't exist\n            if finding_id not in self.feedback_data:\n    ...",
+      "code": "    def annotate_findings(self, findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:\n        \"\"\"Add feedback information to findings\"\"\"\n        annotated_findings = []\n        \n        for finding in findings:\n            finding_id = self.generate_finding_id(finding)\n            \n            # Create feedback record if it doesn't exist\n            if finding_id not in self.feedback_data:\n                self.create_finding_feedback(finding)\n            \n            # Add feedback info to finding\n            annotated_finding = finding.copy()\n            feedback = self.feedback_data[finding_id]\n            \n            annotated_finding.update({\n                \"finding_id\": finding_id,\n                \"feedback_status\": feedback.status,\n                \"feedback_count\": len(feedback.entries),\n                \"last_updated\": feedback.updated_at\n            })\n            \n            annotated_findings.append(annotated_finding)\n            \n        return annotated_findings",
+      "metadata": {
+        "file": "feedback_tracker.py",
+        "type": "function",
+        "name": "annotate_findings",
+        "line": 190,
+        "args": [
+          "self",
+          "findings"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "feedback_tracker.py",
+      "content": "Function search_findings in feedback_tracker.py:\n    def search_findings(self, query: str) -> List[FindingFeedback]:\n        \"\"\"Search findings by file, rule, or title\"\"\"\n        query = query.lower()\n        results = []\n        \n        for feedback in self.feedback_data.values():\n            if (query in feedback.file.lower() or \n                query in feedback.rule.lower() or \n                query in feedback.title.lower()):\n             ...",
+      "code": "    def search_findings(self, query: str) -> List[FindingFeedback]:\n        \"\"\"Search findings by file, rule, or title\"\"\"\n        query = query.lower()\n        results = []\n        \n        for feedback in self.feedback_data.values():\n            if (query in feedback.file.lower() or \n                query in feedback.rule.lower() or \n                query in feedback.title.lower()):\n                results.append(feedback)\n                \n        return results",
+      "metadata": {
+        "file": "feedback_tracker.py",
+        "type": "function",
+        "name": "search_findings",
+        "line": 216,
+        "args": [
+          "self",
+          "query"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "feedback_tracker.py",
+      "content": "Function list_findings in feedback_tracker.py:\n    def list_findings(self, status: str = None, author: str = None) -> Dict[str, Dict]:\n        \"\"\"List findings with optional filtering\"\"\"\n        results = {}\n        \n        for finding_id, feedback in self.feedback_data.items():\n            # Filter by status if provided\n            if status and feedback.status != status:\n                continue\n            \n            # Filter by author i...",
+      "code": "    def list_findings(self, status: str = None, author: str = None) -> Dict[str, Dict]:\n        \"\"\"List findings with optional filtering\"\"\"\n        results = {}\n        \n        for finding_id, feedback in self.feedback_data.items():\n            # Filter by status if provided\n            if status and feedback.status != status:\n                continue\n            \n            # Filter by author if provided (check entries)\n            if author:\n                author_found = False\n                for entry in feedback.entries:\n                    if entry.author == author:\n                        author_found = True\n                        break\n                if not author_found:\n                    continue\n            \n            # Convert to dict format for display\n            results[finding_id] = {\n                \"status\": feedback.status,\n                \"file\": feedback.file,\n                \"line\": feedback.line,\n                \"rule\": feedback.rule,\n                \"title\": feedback.title,\n                \"discussion\": feedback.entries,\n                \"created_at\": feedback.created_at,\n                \"updated_at\": feedback.updated_at\n            }\n            \n        return results",
+      "metadata": {
+        "file": "feedback_tracker.py",
+        "type": "function",
+        "name": "list_findings",
+        "line": 229,
+        "args": [
+          "self",
+          "status",
+          "author"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "feedback_tracker.py",
+      "content": "Function mark_will_fix_later in feedback_tracker.py:\n    def mark_will_fix_later(self, finding_id: str, comment: str = \"\", author: str = \"developer\") -> bool:\n        \"\"\"Mark a finding as will fix later\"\"\"\n        return self.change_status(finding_id, FeedbackStatus.WILL_FIX_LATER.value, comment, author)...",
+      "code": "    def mark_will_fix_later(self, finding_id: str, comment: str = \"\", author: str = \"developer\") -> bool:\n        \"\"\"Mark a finding as will fix later\"\"\"\n        return self.change_status(finding_id, FeedbackStatus.WILL_FIX_LATER.value, comment, author)",
+      "metadata": {
+        "file": "feedback_tracker.py",
+        "type": "function",
+        "name": "mark_will_fix_later",
+        "line": 262,
+        "args": [
+          "self",
+          "finding_id",
+          "comment",
+          "author"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "feedback_tracker.py",
+      "content": "Function get_finding_stats in feedback_tracker.py:\n    def get_finding_stats(self) -> Dict[str, Any]:\n        \"\"\"Get comprehensive feedback statistics\"\"\"\n        stats = self.get_statistics()\n        \n        # Add additional stats\n        total_findings = len(self.feedback_data)\n        total_comments = sum(len(feedback.entries) for feedback in self.feedback_data.values())\n        \n        # Calculate resolution rate\n        resolved_count = stat...",
+      "code": "    def get_finding_stats(self) -> Dict[str, Any]:\n        \"\"\"Get comprehensive feedback statistics\"\"\"\n        stats = self.get_statistics()\n        \n        # Add additional stats\n        total_findings = len(self.feedback_data)\n        total_comments = sum(len(feedback.entries) for feedback in self.feedback_data.values())\n        \n        # Calculate resolution rate\n        resolved_count = stats.get(FeedbackStatus.RESOLVED.value, 0)\n        false_positive_count = stats.get(FeedbackStatus.FALSE_POSITIVE.value, 0)\n        resolution_rate = 0\n        if total_findings > 0:\n            resolution_rate = ((resolved_count + false_positive_count) / total_findings) * 100\n        \n        return {\n            \"total_findings\": total_findings,\n            \"total_comments\": total_comments,\n            \"resolution_rate\": round(resolution_rate, 1),\n            \"by_status\": stats,\n            \"active_findings\": total_findings - resolved_count - false_positive_count\n        }",
+      "metadata": {
+        "file": "feedback_tracker.py",
+        "type": "function",
+        "name": "get_finding_stats",
+        "line": 266,
+        "args": [
+          "self"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "feedback_tracker.py",
+      "content": "Function import_findings_for_tracking in feedback_tracker.py:\n    def import_findings_for_tracking(self, findings: List[Dict[str, Any]]) -> int:\n        \"\"\"Import findings and create feedback records for new ones\"\"\"\n        imported_count = 0\n        \n        for finding in findings:\n            finding_id = self.create_finding_feedback(finding)\n            if finding_id not in self.feedback_data:\n                imported_count += 1\n                \n        ...",
+      "code": "    def import_findings_for_tracking(self, findings: List[Dict[str, Any]]) -> int:\n        \"\"\"Import findings and create feedback records for new ones\"\"\"\n        imported_count = 0\n        \n        for finding in findings:\n            finding_id = self.create_finding_feedback(finding)\n            if finding_id not in self.feedback_data:\n                imported_count += 1\n                \n        return imported_count",
+      "metadata": {
+        "file": "feedback_tracker.py",
+        "type": "function",
+        "name": "import_findings_for_tracking",
+        "line": 289,
+        "args": [
+          "self",
+          "findings"
+        ]
+      }
+    },
+    {
+      "type": "imports",
+      "file": "diff_utils.py",
+      "content": "File diff_utils.py imports: subprocess, re, typing.List, typing.Dict",
+      "code": "import subprocess\nimport re\nimport typing.List\nimport typing.Dict",
+      "metadata": {
+        "file": "diff_utils.py",
+        "type": "imports",
+        "line": 1
+      }
+    },
+    {
+      "type": "function",
+      "file": "diff_utils.py",
+      "content": "Function get_staged_diff in diff_utils.py:\ndef get_staged_diff(unified_context: int = 0) -> str:\n    res = subprocess.run([\"git\",\"diff\",\"--cached\", f\"-U{unified_context}\"],\n                         capture_output=True, text=True, check=True)\n    return res.stdout...",
+      "code": "def get_staged_diff(unified_context: int = 0) -> str:\n    res = subprocess.run([\"git\",\"diff\",\"--cached\", f\"-U{unified_context}\"],\n                         capture_output=True, text=True, check=True)\n    return res.stdout",
+      "metadata": {
+        "file": "diff_utils.py",
+        "type": "function",
+        "name": "get_staged_diff",
+        "line": 4,
+        "args": [
+          "unified_context"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "file": "diff_utils.py",
+      "content": "Function split_into_hunks in diff_utils.py:\ndef split_into_hunks(diff_text: str) -> List[Dict]:\n    files, current = [], None\n    filename = None\n    for line in diff_text.splitlines():\n        if line.startswith(\"+++ b/\"):\n            filename = line[6:]\n        if line.startswith(\"@@\"):\n            m = HUNK_RE.match(line)\n            if m:\n                if current: files.append(current)\n                current = {\n                    \"f...",
+      "code": "def split_into_hunks(diff_text: str) -> List[Dict]:\n    files, current = [], None\n    filename = None\n    for line in diff_text.splitlines():\n        if line.startswith(\"+++ b/\"):\n            filename = line[6:]\n        if line.startswith(\"@@\"):\n            m = HUNK_RE.match(line)\n            if m:\n                if current: files.append(current)\n                current = {\n                    \"file\": filename,\n                    \"header\": line,\n                    \"added\": [],\n                    \"raw\": [line],\n                }\n            continue\n        if current:\n            current[\"raw\"].append(line)\n            if line.startswith(\"+\") and not line.startswith(\"+++\"):\n                current[\"added\"].append(line[1:])\n    if current: files.append(current)\n    # p\u0103str\u0103m doar hunks cu linii ad\u0103ugate\n    return [h for h in files if h[\"added\"]]",
+      "metadata": {
+        "file": "diff_utils.py",
+        "type": "function",
+        "name": "split_into_hunks",
+        "line": 11,
+        "args": [
+          "diff_text"
+        ]
+      }
+    }
+  ],
+  "cache_key": "db45bd459b10",
+  "use_embeddings": false,
+  "generated_at": 1762009456.1923814
+}
