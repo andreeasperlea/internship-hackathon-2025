@@ -41,10 +41,17 @@
         "action": "status_change",
         "message": "Status changed to will_fix_later: later",
         "status": "will_fix_later"
+      },
+      {
+        "timestamp": "2025-11-01T16:24:08.067340",
+        "author": null,
+        "action": "status_change",
+        "message": "Status changed to will_fix_later: latery",
+        "status": "will_fix_later"
       }
     ],
     "created_at": "2025-11-01T15:54:15.010373",
-    "updated_at": "2025-11-01T16:12:43.861683"
+    "updated_at": "2025-11-01T16:24:08.067340"
   },
   "8bee95067781": {
     "finding_id": "8bee95067781",
