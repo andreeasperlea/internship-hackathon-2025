@@ -15,21 +15,26 @@ if os.path.exists(CONFIG_PATH):
 else:
     cfg = {}
 
-# === Ollama configuration (REMOTE ONLY) ===
-OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "http://192.168.0.112:11434/api/generate")
+# === Ollama configuration ===
+# Prefer env var → config → fallback localhost
+OLLAMA_API_URL = os.getenv(
+    "OLLAMA_API_URL",
+    cfg.get("ollama_url", "http://localhost:11434/api/generate")
+)
 OLLAMA_MODEL = cfg.get("model_ollama", os.getenv("OLLAMA_MODEL", "llama3.1:8b"))
 MAX_FINDINGS = cfg.get("max_findings", 50)
 
-# --- Quick remote server check ---
+# --- Quick remote/local server check ---
 def ensure_ollama_online(url: str, timeout: float = 1.5):
-    """Exit fast if the remote Ollama server is offline or unreachable."""
+    """Exit fast if the Ollama server (remote or local) is offline or unreachable."""
     parsed = urllib.parse.urlparse(url)
     host = parsed.hostname or "localhost"
     port = parsed.port or 11434
 
     try:
         with socket.create_connection((host, port), timeout=timeout):
-            return True  # success
+            print(f"🔌 Connected to Ollama at {url}")
+            return True
     except Exception:
         print(f"❌ Ollama server not reachable at {host}:{port}")
         print("💤 Skipping AI review (server offline).")
@@ -71,7 +76,7 @@ IMPORTANT:
 
 # --- Ollama API call ---
 def ask_ollama(prompt: str) -> str:
-    """Call the remote Ollama API."""
+    """Call the Ollama API (remote or local)."""
     ensure_ollama_online(OLLAMA_API_URL)
 
     payload = {"model": OLLAMA_MODEL, "prompt": prompt, "stream": False}
@@ -79,16 +84,16 @@ def ask_ollama(prompt: str) -> str:
         resp = requests.post(
             OLLAMA_API_URL,
             json=payload,
-            timeout=(3, 10)  # (connect_timeout, read_timeout)
+            timeout=(3, 60)  # (connect_timeout, read_timeout)
         )
         resp.raise_for_status()
         data = resp.json()
         return data.get("response") or data.get("text") or str(data)
     except requests.exceptions.ConnectTimeout:
-        print("❌ Connection timed out while contacting Ollama.")
+        print("⚠️  Connection timed out while contacting Ollama.")
         raise SystemExit(0)
     except requests.exceptions.RequestException as e:
-        print(f"❌ Ollama request failed: {e}")
+        print(f"⚠️  Ollama request failed: {e}")
         raise SystemExit(0)
 
 # --- safer JSON parsing ---
@@ -110,7 +115,7 @@ def safe_parse_json(raw: str):
 
 # --- Main review function ---
 def review_hunks(hunks, rules, max_findings=MAX_FINDINGS):
-    """Send each diff hunk to remote Ollama for review."""
+    """Send each diff hunk to Ollama for review."""
     guidelines = "\n".join(f"- {r['id']}: {r['description']}" for r in rules)
     all_findings, summaries, efforts = [], [], []
 

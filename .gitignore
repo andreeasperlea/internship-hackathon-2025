@@ -1,8 +1,19 @@
-
-echo "__pycache__/
-.ai_review_cache/
+# Python caches
+__pycache__/
 *.pyc
+*.pyo
+
+# Local review cache
+.ai_review_cache/
 AI_REVIEW.md
 ai_review.json
 ai_review.sarif
-" > .gitignore
+.last_failed_response.txt
+
+# Editors / swap files
+*.swp
+*.swo
+
+# Local config (optional)
+review_config.yaml
+.env

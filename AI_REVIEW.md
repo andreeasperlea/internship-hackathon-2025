@@ -1,11 +1,11 @@
 # AI Review Report
 
-**Effort**: S
+**Effort**: XS
 
-> New functions added for running code analysis tools using subprocess.
+> Potential security issue with subprocess
 
 ## Findings
 
-- **WARN** [SEC] <filename>.py:1 — Use of subprocess without shell=True
-  - The use of subprocess with built-in commands can lead to security issues if untrusted input is passed.
-  - **Fix**: Ensure the input is sanitized or consider alternatives like safer subprocess handling.
+- **ERROR** [SEC-BANDIT] path/to/file.py:1 — Avoid subprocess shell=True for security reasons
+  - Using `shell=True` with subprocess can lead to command injection attacks. Consider using the `args` parameter instead.
+  - **Fix**: Replace `subprocess.run('ls', shell=True)` with `subprocess.run(['ls'])` or use the `args` parameter
