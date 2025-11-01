@@ -523,13 +523,10 @@ def main():
     if args.feedback:
         return handle_feedback_operations(args)
     
-    # Backend fixed to Ollama
     backend = "ollama"
     
-    # Show beautiful startup banner
     show_startup_banner(cfg, rules, formats, args)
 
-    # Get staged changes with progress
     with Progress(
         SpinnerColumn(),
         TextColumn("[bold blue]Analyzing staged changes..."),
