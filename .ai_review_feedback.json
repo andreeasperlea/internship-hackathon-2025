@@ -249,5 +249,43 @@
     ],
     "created_at": "2025-11-01T16:50:21.379690",
     "updated_at": "2025-11-01T16:50:21.379690"
+  },
+  "2d0350845721": {
+    "finding_id": "2d0350845721",
+    "file": "feedback_tracker.py",
+    "line": 23,
+    "rule": "STYLE|CONSISTENCY",
+    "title": "Use consistent spacing around assignment operators",
+    "status": "open",
+    "entries": [
+      {
+        "timestamp": "2025-11-01T17:06:05.276594",
+        "author": "system",
+        "action": "created",
+        "message": "Finding created: Use consistent spacing around assignment operators",
+        "status": null
+      }
+    ],
+    "created_at": "2025-11-01T17:06:05.276594",
+    "updated_at": "2025-11-01T17:06:05.276594"
+  },
+  "1395241a19f0": {
+    "finding_id": "1395241a19f0",
+    "file": "diff_utils.py",
+    "line": 15,
+    "rule": "STYLE|CONSISTENCY",
+    "title": "Use consistent naming conventions for variables and functions",
+    "status": "open",
+    "entries": [
+      {
+        "timestamp": "2025-11-01T17:06:05.279516",
+        "author": "system",
+        "action": "created",
+        "message": "Finding created: Use consistent naming conventions for variables and functions",
+        "status": null
+      }
+    ],
+    "created_at": "2025-11-01T17:06:05.279516",
+    "updated_at": "2025-11-01T17:06:05.279516"
   }
 }
