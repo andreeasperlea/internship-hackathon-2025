@@ -5,7 +5,7 @@
     "line": 11,
     "rule": "security-issue",
     "title": "",
-    "status": "resolved",
+    "status": "will_fix_later",
     "entries": [
       {
         "timestamp": "2025-11-01T15:54:15.010373",
@@ -34,10 +34,17 @@
         "action": "status_change",
         "message": "Status changed to resolved: Fixed by removing shell=True parameter",
         "status": "resolved"
+      },
+      {
+        "timestamp": "2025-11-01T16:12:43.861683",
+        "author": null,
+        "action": "status_change",
+        "message": "Status changed to will_fix_later: later",
+        "status": "will_fix_later"
       }
     ],
     "created_at": "2025-11-01T15:54:15.010373",
-    "updated_at": "2025-11-01T16:00:28.348301"
+    "updated_at": "2025-11-01T16:12:43.861683"
   },
   "8bee95067781": {
     "finding_id": "8bee95067781",
@@ -64,5 +71,100 @@
     ],
     "created_at": "2025-11-01T15:54:15.011244",
     "updated_at": "2025-11-01T16:00:38.354355"
+  },
+  "68f9241f7a94": {
+    "finding_id": "68f9241f7a94",
+    "file": "AI_REVIEW.md",
+    "line": 9,
+    "rule": "SEC-BANDIT",
+    "title": "Potential subprocess vulnerability",
+    "status": "open",
+    "entries": [
+      {
+        "timestamp": "2025-11-01T16:04:16.492586",
+        "author": "system",
+        "action": "created",
+        "message": "Finding created: Potential subprocess vulnerability",
+        "status": null
+      }
+    ],
+    "created_at": "2025-11-01T16:04:16.492586",
+    "updated_at": "2025-11-01T16:04:16.492586"
+  },
+  "912257016e1b": {
+    "finding_id": "912257016e1b",
+    "file": "AI_REVIEW.md",
+    "line": 13,
+    "rule": "PEP8",
+    "title": "Unused import",
+    "status": "open",
+    "entries": [
+      {
+        "timestamp": "2025-11-01T16:04:16.493252",
+        "author": "system",
+        "action": "created",
+        "message": "Finding created: Unused import",
+        "status": null
+      }
+    ],
+    "created_at": "2025-11-01T16:04:16.493252",
+    "updated_at": "2025-11-01T16:04:16.493252"
+  },
+  "28f85e14101a": {
+    "finding_id": "28f85e14101a",
+    "file": "AI_REVIEW.md",
+    "line": 26,
+    "rule": "SEC-BANDIT",
+    "title": "Unknown issue",
+    "status": "open",
+    "entries": [
+      {
+        "timestamp": "2025-11-01T16:04:16.493896",
+        "author": "system",
+        "action": "created",
+        "message": "Finding created: Unknown issue",
+        "status": null
+      }
+    ],
+    "created_at": "2025-11-01T16:04:16.493896",
+    "updated_at": "2025-11-01T16:04:16.493896"
+  },
+  "95f6a8c27822": {
+    "finding_id": "95f6a8c27822",
+    "file": "cli.py",
+    "line": 320,
+    "rule": "SEC-BANDIT",
+    "title": "Use of subprocess with shell=True detected",
+    "status": "open",
+    "entries": [
+      {
+        "timestamp": "2025-11-01T16:04:16.494549",
+        "author": "system",
+        "action": "created",
+        "message": "Finding created: Use of subprocess with shell=True detected",
+        "status": null
+      }
+    ],
+    "created_at": "2025-11-01T16:04:16.494549",
+    "updated_at": "2025-11-01T16:04:16.494549"
+  },
+  "ebccc003a277": {
+    "finding_id": "ebccc003a277",
+    "file": "cli.py",
+    "line": 323,
+    "rule": "PEP8",
+    "title": "Long variable names - will refactor in next sprint",
+    "status": "open",
+    "entries": [
+      {
+        "timestamp": "2025-11-01T16:04:16.495275",
+        "author": "system",
+        "action": "created",
+        "message": "Finding created: Long variable names - will refactor in next sprint",
+        "status": null
+      }
+    ],
+    "created_at": "2025-11-01T16:04:16.495275",
+    "updated_at": "2025-11-01T16:04:16.495275"
   }
 }
