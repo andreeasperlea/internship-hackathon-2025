@@ -24,6 +24,34 @@ python cli.py --config my_config.yaml --rules my_rules.yaml
 python cli.py --help
 ```
 
+### 💬 Feedback Management Commands
+
+```bash
+# List all findings with feedback
+python cli.py --feedback list
+
+# Show detailed feedback for a finding
+python cli.py --feedback show --finding-id abc123def456
+
+# Add a comment to a finding
+python cli.py --feedback comment --finding-id abc123def456 --message "Fixed in commit xyz"
+
+# Mark finding as resolved
+python cli.py --feedback resolve --finding-id abc123def456 --message "Issue resolved"
+
+# Mark finding as false positive
+python cli.py --feedback false-positive --finding-id abc123def456 --message "Not a real issue"
+
+# Mark finding as will fix later
+python cli.py --feedback will-fix-later --finding-id abc123def456 --message "Will fix in v2.0"
+
+# Show feedback statistics
+python cli.py --feedback stats
+
+# Search findings
+python cli.py --feedback search --query "security"
+```
+
 ---
 
 ### 📋 All CLI Options

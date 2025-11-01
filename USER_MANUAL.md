@@ -57,6 +57,85 @@ Shows all available options and their descriptions.
 
 ---
 
+## 💬 Feedback System
+
+RevAI includes a comprehensive feedback system for tracking finding discussions and resolutions.
+
+### **Basic Feedback Operations**
+
+#### **List All Findings**
+```bash
+python cli.py --feedback list
+```
+- Shows all findings with current status
+- Displays finding IDs for further operations
+
+#### **Show Detailed Feedback**
+```bash
+python cli.py --feedback show --finding-id abc123def456
+```
+- Shows complete discussion history for a finding
+- Includes all comments and status changes
+
+#### **Add Comments**
+```bash
+python cli.py --feedback comment --finding-id abc123def456 --message "Working on this issue"
+```
+- Add discussion comments to findings
+- Track progress and notes
+
+### **Status Management**
+
+#### **Mark as Resolved**
+```bash
+python cli.py --feedback resolve --finding-id abc123def456 --message "Fixed in commit abc123"
+```
+
+#### **Mark as False Positive** 
+```bash
+python cli.py --feedback false-positive --finding-id abc123def456 --message "This is expected behavior"
+```
+
+#### **Mark as Will Fix Later**
+```bash
+python cli.py --feedback will-fix-later --finding-id abc123def456 --message "Technical debt item"
+```
+
+### **Advanced Features**
+
+#### **Search Findings**
+```bash
+python cli.py --feedback search --query "security"
+```
+- Search findings by file, rule, or title
+- Quickly find specific types of issues
+
+#### **View Statistics**
+```bash
+python cli.py --feedback stats
+```
+- Shows resolution rates and status breakdown
+- Track team progress over time
+
+#### **Filter by Status**
+```bash
+python cli.py --feedback list --status resolved
+```
+- Filter findings by current status
+- Focus on specific workflow states
+
+### **Finding IDs**
+
+Each finding gets a unique 12-character ID based on:
+- File path
+- Line number  
+- Rule type
+- Issue title
+
+IDs remain consistent across reviews, enabling persistent tracking.
+
+---
+
 ## 🔧 Configuration Options
 
 ### Command Line Arguments
