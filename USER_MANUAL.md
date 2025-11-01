@@ -374,6 +374,29 @@ git status
 python cli.py --no-apply-fixes
 ```
 
+### **AI Parsing Errors**
+
+**Problem:** `parse_error` or `LLM returned non-JSON response`
+
+**Solutions:**
+```bash
+# 1. Check Ollama server status
+ollama serve
+
+# 2. Verify model is available
+ollama list
+
+# 3. Test Ollama directly
+ollama run llama3.1:8b "Hello"
+
+# 4. Clear cache and retry
+rm -rf .ai_review_cache/
+python cli.py
+
+# 5. Check debug file
+cat .ai_review_cache/last_failed_response.txt
+```
+
 ### **Performance Issues**
 
 **Problem:** Slow analysis

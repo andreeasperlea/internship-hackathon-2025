@@ -393,6 +393,22 @@ def main():
         Path("AI_REVIEW.md").write_text("\n".join(md))
         console.print("[bold green]💾 Wrote[/bold green] [cyan]AI_REVIEW.md[/cyan]")
 
+    # Check for system issues in the review
+    summary = out.get("summary", "")
+    if "parse error" in summary.lower() or "non-json" in summary.lower():
+        console.print(Panel(
+            "[bold yellow]⚠️  AI Analysis Warning[/bold yellow]\n"
+            f"Issue: {summary}\n\n"
+            "[dim]Troubleshooting:[/dim]\n"
+            "[dim]• Check that Ollama server is running: 'ollama serve'[/dim]\n"
+            "[dim]• Verify model is available: 'ollama list'[/dim]\n"
+            "[dim]• Try with smaller changes or simpler code[/dim]\n"
+            "[dim]• Check .ai_review_cache/last_failed_response.txt for details[/dim]",
+            border_style="yellow",
+            box=box.ROUNDED
+        ))
+        console.print("")
+    
     # Display results based on chosen mode
     console.print("\n")
     
