@@ -1,10 +1,11 @@
 import argparse, os, json, hashlib
 from diff_utils import get_staged_diff, split_into_hunks
-from review import review_hunks
+from review import review_hunks, review_hunks_with_context
 from patcher import apply_unified_patch
 from linters import run_ruff, run_bandit, run_mypy
 from cost import CostTracker
 from feedback_tracker import FeedbackTracker, FeedbackStatus
+from codebase_context import CodebaseContextEngine
 import yaml
 from pathlib import Path
 
@@ -561,19 +562,101 @@ def main():
         console.print("[dim]📋 Using cached analysis...[/dim]")
         report = json.loads(cache_file.read_text())
     else:
-        # AI analysis with progress
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[bold green]🤖 Running AI analysis..."),
-            BarColumn(),
-            console=console
-        ) as progress:
-            ai_task = progress.add_task("AI Review", total=100)
-            progress.update(ai_task, advance=30)
-            
-            report = review_hunks(hunks, rules, max_findings=50)
-            progress.update(ai_task, advance=100)
-            
+        # Check if contextual analysis is enabled
+        enable_context = cfg.get("enable_codebase_context", True)
+        context_chunks = cfg.get("context_chunks", 5)
+        
+        if enable_context and hunks:
+            # Contextual AI analysis with codebase awareness
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[bold magenta]🧠 Analyzing codebase for context..."),
+                BarColumn(),
+                console=console
+            ) as progress:
+                context_task = progress.add_task("Context Analysis", total=100)
+                
+                try:
+                    # Initialize context engine
+                    context_engine = CodebaseContextEngine()
+                    progress.update(context_task, advance=20, description="[bold magenta]Tokenizing codebase...")
+                    
+                    # Get changed files and diff content
+                    changed_files = list(set(h['file'] for h in hunks))
+                    diff_content = "\n".join("\n".join(h["raw"]) for h in hunks)
+                    
+                    # Generate or load embeddings
+                    chunks = context_engine.tokenize_project()
+                    progress.update(context_task, advance=50, description="[bold magenta]Generating embeddings...")
+                    
+                    embedding_data = context_engine.generate_embeddings(chunks)
+                    progress.update(context_task, advance=70, description="[bold magenta]Finding relevant context...")
+                    
+                    # Find relevant context
+                    relevant_context = context_engine.find_relevant_context(
+                        changed_files, diff_content, embedding_data, top_k=context_chunks
+                    )
+                    progress.update(context_task, advance=100)
+                    
+                    if relevant_context:
+                        console.print(f"[dim]🔍 Found {len(relevant_context)} relevant code patterns[/dim]")
+                        console.print(f"[dim]📋 Context sources: {', '.join(set(Path(ctx['file']).name for ctx in relevant_context))[:3]}[/dim]")
+                        
+                        # Enhanced review with context
+                        with Progress(
+                            SpinnerColumn(),
+                            TextColumn("[bold green]🤖 Running contextual AI analysis..."),
+                            BarColumn(),
+                            console=console
+                        ) as ai_progress:
+                            ai_task = ai_progress.add_task("AI Review", total=100)
+                            ai_progress.update(ai_task, advance=30)
+                            
+                            report = review_hunks_with_context(hunks, rules, relevant_context, max_findings=50)
+                            ai_progress.update(ai_task, advance=100)
+                    else:
+                        console.print("[dim]ℹ️ No relevant context found, using standard review[/dim]")
+                        # Fall back to standard review
+                        with Progress(
+                            SpinnerColumn(),
+                            TextColumn("[bold green]🤖 Running standard AI analysis..."),
+                            BarColumn(),
+                            console=console
+                        ) as ai_progress:
+                            ai_task = ai_progress.add_task("AI Review", total=100)
+                            ai_progress.update(ai_task, advance=30)
+                            
+                            report = review_hunks(hunks, rules, max_findings=50)
+                            ai_progress.update(ai_task, advance=100)
+                            
+                except Exception as e:
+                    console.print(f"[dim yellow]⚠️ Context analysis failed ({e}), using standard review[/dim yellow]")
+                    # Fall back to standard review
+                    with Progress(
+                        SpinnerColumn(),
+                        TextColumn("[bold green]🤖 Running standard AI analysis..."),
+                        BarColumn(),
+                        console=console
+                    ) as ai_progress:
+                        ai_task = ai_progress.add_task("AI Review", total=100)
+                        ai_progress.update(ai_task, advance=30)
+                        
+                        report = review_hunks(hunks, rules, max_findings=50)
+                        ai_progress.update(ai_task, advance=100)
+        else:
+            # Standard AI analysis without context
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[bold green]🤖 Running standard AI analysis..."),
+                BarColumn(),
+                console=console
+            ) as progress:
+                ai_task = progress.add_task("AI Review", total=100)
+                progress.update(ai_task, advance=30)
+                
+                report = review_hunks(hunks, rules, max_findings=50)
+                progress.update(ai_task, advance=100)
+                
         cache_file.write_text(json.dumps(report, indent=2))
 
     # Static analysis with progress
@@ -805,9 +888,24 @@ def main():
     # Performance summary
     stats = tracker.summary()
     
+    # Add context information if available
+    perf_text = [
+        f"[bold green]⏱️  Analysis completed in {stats['elapsed_sec']}s[/bold green]",
+        f"[dim]Characters processed: {stats['chars_in']} in, {stats['chars_out']} out[/dim]"
+    ]
+    
+    # Show context usage if contextual analysis was used
+    context_used = report.get("context_used", 0)
+    if context_used > 0:
+        perf_text.append(f"[bold magenta]🧠 Contextual Analysis: {context_used} code patterns analyzed[/bold magenta]")
+        perf_text.append("[dim]Enhanced with codebase awareness[/dim]")
+    elif cfg.get("enable_codebase_context", True):
+        perf_text.append("[dim]🧠 Standard analysis (no relevant context found)[/dim]")
+    else:
+        perf_text.append("[dim]🧠 Contextual analysis disabled[/dim]")
+    
     perf_panel = Panel(
-        f"[bold green]⏱️  Analysis completed in {stats['elapsed_sec']}s[/bold green]\n"
-        f"[dim]Characters processed: {stats['chars_in']} in, {stats['chars_out']} out[/dim]",
+        "\n".join(perf_text),
         title="[bold]📊 Performance[/bold]",
         border_style="green",
         box=box.ROUNDED

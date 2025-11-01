@@ -12,3 +12,26 @@ enable_autofix: false      # Default: disabled for safety
 formats: [md, json]        # md | json | sarif
 use_only_staged: true
 ollama_url: http://localhost:11434/api/generate
+
+# Codebase Context Configuration (NEW FEATURE!)
+enable_codebase_context: true         # Enable contextual analysis for smarter reviews
+context_chunks: 5                     # Number of relevant code chunks to include in AI prompt
+context_similarity_threshold: 0.2     # Minimum similarity score for relevance (0.0-1.0)
+context_cache_ttl: 86400             # Cache TTL in seconds (24 hours)
+
+# Context filtering - patterns to exclude from analysis
+context_exclude_patterns:
+  - "__pycache__"
+  - ".git" 
+  - "*.pyc"
+  - ".venv"
+  - "node_modules" 
+  - ".ai_review_cache"
+  - ".codebase_context_cache"
+  - "*.egg-info"
+  - ".pytest_cache"
+  - ".mypy_cache"
+  - ".ruff_cache"
+
+# Embedding model (lightweight but effective for code similarity)
+embedding_model: "all-MiniLM-L6-v2"  # Sentence transformer model for code embeddings

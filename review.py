@@ -40,7 +40,7 @@ def ensure_ollama_online(url: str, timeout: float = 1.5):
         print("💤 Skipping AI review (server offline).")
         raise SystemExit(0)
 
-# --- Prompt template for code review ---
+# --- Prompt templates for code review ---
 PROMPT_TEMPLATE = """You are an expert code reviewer. You must respond with VALID JSON ONLY.
 
 Analyze ONLY the newly added lines (lines starting with +) and their context.
@@ -76,6 +76,59 @@ CRITICAL INSTRUCTIONS:
 3. If no issues found, return: {{"summary": "Code looks good", "effort": "XS", "findings": []}}
 4. Focus on NEW code (+ lines) in the diff
 5. Include auto_fix_patch only for simple, safe fixes
+
+JSON RESPONSE:"""
+
+# --- Enhanced contextual prompt template ---
+CONTEXTUAL_PROMPT_TEMPLATE = """You are an expert code reviewer with deep knowledge of this codebase.
+
+RELEVANT CODEBASE CONTEXT:
+The following are existing patterns, functions, and utilities from this codebase that relate to the changes:
+
+{codebase_context}
+
+CODING GUIDELINES:
+{guidelines}
+
+CHANGES TO REVIEW:
+---
+{hunk}
+---
+
+Based on the existing codebase patterns above, provide contextually-aware review:
+
+REQUIRED JSON SCHEMA:
+{{
+  "summary": "brief overview considering codebase context",
+  "effort": "XS|S|M|L|XL",
+  "findings": [
+    {{
+      "file": "path/to/file.py",
+      "line": 123,
+      "rule": "PEP8|SEC|PERF|STYLE|DOCS|TESTS|ARCH|CONSISTENCY",
+      "severity": "info|warn|error", 
+      "title": "issue with context awareness",
+      "description": "explanation considering existing patterns",
+      "recommendation": "fix that maintains consistency with existing code",
+      "auto_fix_patch": "unified diff patch using existing patterns (optional)"
+    }}
+  ]
+}}
+
+Focus on:
+1. Consistency with existing codebase patterns and naming conventions
+2. Reusing existing utility functions instead of duplicating code
+3. Following established architectural patterns
+4. Integrating properly with existing interfaces and APIs
+5. Suggesting use of existing helper functions when appropriate
+6. Maintaining consistency with existing error handling and logging patterns
+
+CRITICAL INSTRUCTIONS:
+1. RESPOND ONLY WITH VALID JSON - NO OTHER TEXT
+2. NO markdown code blocks (```), NO explanations, NO prose
+3. If no issues found, return: {{"summary": "Code looks good and follows existing patterns", "effort": "XS", "findings": []}}
+4. Focus on NEW code (+ lines) in the diff
+5. Include auto_fix_patch only for simple, safe fixes that use existing patterns
 
 JSON RESPONSE:"""
 
@@ -189,4 +242,60 @@ JSON:"""
         "summary": data.get("summary", "Review completed with parsing issues"),
         "effort": data.get("effort", "S"),
         "findings": data.get("findings", [])[:max_findings],
+    }
+
+def review_hunks_with_context(hunks, rules, codebase_context, max_findings=MAX_FINDINGS):
+    """Enhanced review with codebase context for better suggestions."""
+    ensure_ollama_online(OLLAMA_API_URL)
+
+    # Format codebase context for prompt
+    context_sections = []
+    for i, ctx in enumerate(codebase_context, 1):
+        context_sections.append(
+            f"[{i}] {ctx['type'].upper()} - {Path(ctx['file']).name} ({ctx.get('name', 'N/A')}):\n"
+            f"Location: {ctx['file']}:{ctx['line']}\n"
+            f"Similarity: {ctx['similarity']:.2f}\n"
+            f"Code:\n{ctx['content']}\n"
+        )
+    
+    context_text = "\n".join(context_sections) if context_sections else "No relevant context found."
+    
+    # Combine all hunks
+    joined_hunks = "\n\n---\n\n".join(
+        f"File: {h['file']}\n" + "\n".join(h["raw"]) for h in hunks
+    )
+    
+    guidelines = "\n".join(f"- {r['id']}: {r['description']}" for r in rules)
+    
+    prompt = CONTEXTUAL_PROMPT_TEMPLATE.format(
+        codebase_context=context_text,
+        guidelines=guidelines, 
+        hunk=joined_hunks
+    )
+    
+    print("🧠 Sending contextual review to Ollama (with codebase awareness)...")
+    
+    raw = ask_ollama(prompt).strip()
+    data = safe_parse_json(raw)
+    
+    # If parsing failed, fall back to standard review
+    if data.get("summary", "").startswith(("JSON parse error", "LLM returned non-JSON")):
+        print("🔄 Contextual review failed, falling back to standard review...")
+        return review_hunks(hunks, rules, max_findings)
+    
+    # Enhance findings with context information
+    for finding in data.get("findings", []):
+        if not finding.get("rule"):
+            finding["rule"] = "CONSISTENCY"
+        
+        # Add context hint to description if not already contextual
+        if "existing" not in finding.get("description", "").lower():
+            original_desc = finding.get("description", "")
+            finding["description"] = f"{original_desc} (Consider existing codebase patterns.)"
+    
+    return {
+        "summary": data.get("summary", "Review completed with contextual analysis"),
+        "effort": data.get("effort", "S"),
+        "findings": data.get("findings", [])[:max_findings],
+        "context_used": len(codebase_context)
     }

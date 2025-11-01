@@ -1,27 +1,19 @@
 # AI Review Report
 
-**Effort**: S
+**Effort**: M
 
-> SEC-BANDIT and PEP8 issues found
+> Code requires improvements to follow existing codebase patterns
 
 ## Findings
 
-- **ERROR** [SEC-BANDIT] AI_REVIEW.md:9 — Potential subprocess vulnerability
-  - The use of subprocess shell=True can lead to command injection attacks. Fix: Avoid using subprocess with shell=True, instead use the run function without it.
-  - **Fix**: Replace subprocess with subprocess.run(['command']) format
+- **WARN** [CONSISTENCY] test_contextual.py:8 — Inconsistent subprocess usage
+  - The `subprocess.run` call in `new_function` uses `shell=True`, which is discouraged by SEC-BANDIT. Reuse the existing pattern from `review.py` or `cli.py` instead.
+  - **Fix**: Change `subprocess.run` to use a list of commands instead of shell=True
 
-- **WARN** [PEP8] AI_REVIEW.md:13 — Unused import
-  - The import statement is not being used. Fix: Remove unused imports.
-  - **Fix**: Remove unused imports
+- **WARN** [CONSISTENCY] test_contextual.py:11 — Inconsistent JSON loading
+  - The `json.loads` call in `new_function` does not follow the existing pattern from `cli.py`. Reuse the existing utility function instead.
+  - **Fix**: Use the existing `load_json` function from `review.py` to load JSON data
 
-- **INFO** [SEC-BANDIT] AI_REVIEW.md:26 — Unknown issue
-  - No description available. Fix: No recommendation provided
-  - **Fix**: 
-
-- **WARN** [SEC-BANDIT] cli.py:320 — Use of subprocess with shell=True detected
-  - The use of subprocess shell=True can lead to command injection attacks. Fix: Avoid using subprocess with shell=True, instead use the run function without it.
-  - **Fix**: Replace subprocess with subprocess.run(['command']) format
-
-- **WARN** [PEP8] cli.py:323 — Long variable names - will refactor in next sprint
-  - Long variable names are not recommended. Fix: Refactor to shorter variable names
-  - **Fix**: Refactor to shorter variable names
+- **INFO** [PERF] test_contextual.py:20 — Potential performance issue
+  - The `subprocess.run` call in `NewFeature.process_data` uses a try-except block. Consider reusing the existing error handling pattern from `cli.py` instead.
+  - **Fix**: Use the existing error handling pattern from `cli.py` to handle subprocess errors
