@@ -7,6 +7,20 @@ from cost import CostTracker
 import yaml
 from pathlib import Path
 
+# Rich imports for enhanced CLI experience
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
+from rich.syntax import Syntax
+from rich.tree import Tree
+from rich.prompt import Confirm
+from rich import box
+from rich.text import Text
+from rich.columns import Columns
+
+console = Console()
+
 CACHE_DIR = Path(".ai_review_cache")
 CACHE_DIR.mkdir(exist_ok=True)
 
@@ -17,14 +31,14 @@ def check_ollama_connection():
     try:
         resp = requests.post(url, json={"model":"llama3.1:8b","prompt":"ping","stream":False}, timeout=10)
         if resp.status_code == 200:
-            print(f"🔌 Connected to Ollama at {url}")
+            console.print(f"[bold green]🔌 Connected to Ollama[/bold green] at [cyan]{url}[/cyan]")
         else:
-            print(f"⚠️ Ollama responded with status {resp.status_code}")
+            console.print(f"[bold yellow]⚠️ Ollama responded with status {resp.status_code}[/bold yellow]")
     except requests.exceptions.Timeout:
-        print(f"❌ Ollama at {url} timed out.")
+        console.print(f"[bold red]❌ Ollama at {url} timed out.[/bold red]")
         raise SystemExit(1)
     except requests.exceptions.RequestException as e:
-        print(f"❌ Could not reach Ollama: {e}")
+        console.print(f"[bold red]❌ Could not reach Ollama: {e}[/bold red]")
         raise SystemExit(1)
 
 
@@ -35,6 +49,151 @@ def load_yaml(p):
     with open(p) as f:
         return yaml.safe_load(f)
 
+def show_startup_banner(cfg, rules, formats):
+    """Display beautiful startup information"""
+    console.print("\n")
+    console.print(Panel(
+        Text("🤖 RevAI - AI Code Review Assistant", style="bold blue", justify="center"),
+        subtitle="[dim]Powered by Ollama LLM[/dim]",
+        border_style="blue",
+        box=box.ROUNDED
+    ))
+    
+    # Configuration panel
+    config_info = [
+        f"[bold green]✓[/bold green] Model: [cyan]{cfg.get('model_ollama', 'llama3.1:8b')}[/cyan]",
+        f"[bold green]✓[/bold green] Rules: [yellow]{len(rules)}[/yellow] guidelines loaded",
+        f"[bold green]✓[/bold green] Formats: [magenta]{', '.join(formats)}[/magenta]",
+        f"[bold green]✓[/bold green] Auto-fix: [{'green]Enabled' if cfg.get('enable_autofix') else 'red]Disabled'}[/]"
+    ]
+    
+    config_panel = Panel(
+        "\n".join(config_info),
+        title="[bold]🔧 Configuration[/bold]",
+        border_style="green",
+        box=box.ROUNDED
+    )
+    console.print(config_panel)
+
+def show_changes_tree(hunks):
+    """Display changed files in a tree structure"""
+    if not hunks:
+        return
+        
+    tree = Tree("[bold blue]📁 Changed Files[/bold blue]")
+    
+    file_groups = {}
+    for hunk in hunks:
+        path_parts = hunk['file'].split('/')
+        if len(path_parts) > 1:
+            folder = path_parts[0]
+            if folder not in file_groups:
+                file_groups[folder] = []
+            file_groups[folder].append('/'.join(path_parts[1:]))
+        else:
+            if 'root' not in file_groups:
+                file_groups['root'] = []
+            file_groups['root'].append(hunk['file'])
+    
+    for folder, files in file_groups.items():
+        if folder == 'root':
+            for file in files:
+                tree.add(f"[yellow]📄 {file}[/yellow]")
+        else:
+            folder_branch = tree.add(f"[blue]📂 {folder}[/blue]")
+            for file in files:
+                folder_branch.add(f"[yellow]📄 {file}[/yellow]")
+    
+    console.print(tree)
+    console.print("")
+
+def display_review_summary(findings, summary, effort):
+    """Display beautiful review summary with rich formatting"""
+    # Header panel
+    header_text = Text()
+    header_text.append("🤖 AI Code Review Complete\n", style="bold blue")
+    if summary:
+        header_text.append(f"Summary: {summary}\n", style="dim")
+    header_text.append(f"Effort Estimate: ", style="dim")
+    
+    effort_colors = {"XS": "green", "S": "green", "M": "yellow", "L": "red", "XL": "red"}
+    header_text.append(f"{effort}", style=f"bold {effort_colors.get(effort, 'blue')}")
+    
+    header_panel = Panel(
+        header_text,
+        title="[bold]🎯 Results[/bold]",
+        border_style="blue",
+        box=box.ROUNDED
+    )
+    console.print(header_panel)
+    
+    if not findings:
+        console.print(Panel(
+            "[bold green]✅ No significant findings detected![/bold green]\n[dim]Your code looks good to go! 🚀[/dim]",
+            border_style="green",
+            box=box.ROUNDED
+        ))
+        return
+    
+    # Findings table
+    table = Table(show_header=True, header_style="bold magenta", box=box.ROUNDED)
+    table.add_column("Severity", style="bold", width=12)
+    table.add_column("Rule", style="cyan", width=15)
+    table.add_column("Location", style="yellow", width=25)
+    table.add_column("Issue", style="white")
+    
+    severity_icons = {
+        "ERROR": "[bold red]🚨 ERROR[/bold red]",
+        "WARN": "[bold yellow]⚠️  WARN[/bold yellow]", 
+        "INFO": "[bold blue]ℹ️  INFO[/bold blue]"
+    }
+    
+    for f in findings:
+        severity = f.get("severity", "").upper()
+        table.add_row(
+            severity_icons.get(severity, "[dim]❓ UNKNOWN[/dim]"),
+            f"[cyan]{f.get('rule', 'GEN')}[/cyan]",
+            f"{f.get('file', '?')}:{f.get('line', '?')}",
+            f.get('title', 'No description')
+        )
+    
+    console.print(table)
+    console.print("")
+
+def display_detailed_findings(findings):
+    """Display detailed findings with recommendations"""
+    if not findings:
+        return
+        
+    console.print("[bold magenta]📋 Detailed Findings & Recommendations[/bold magenta]\n")
+    
+    for i, f in enumerate(findings, 1):
+        severity = f.get("severity", "").upper()
+        severity_colors = {"ERROR": "red", "WARN": "yellow", "INFO": "blue"}
+        color = severity_colors.get(severity, "white")
+        
+        # Finding panel
+        finding_text = Text()
+        finding_text.append(f"[{severity}] ", style=f"bold {color}")
+        finding_text.append(f"{f.get('title', 'No title')}", style="bold")
+        finding_text.append(f"\n📍 {f.get('file', '?')}:{f.get('line', '?')}", style="dim")
+        
+        if f.get('description'):
+            finding_text.append(f"\n\n{f.get('description')}", style="")
+        
+        if f.get('recommendation'):
+            finding_text.append(f"\n\n💡 Recommendation: ", style="bold green")
+            finding_text.append(f"{f.get('recommendation')}", style="green")
+        
+        panel = Panel(
+            finding_text,
+            title=f"[bold]Finding {i}/{len(findings)} - {f.get('rule', 'UNKNOWN')}[/bold]",
+            border_style=color,
+            box=box.ROUNDED
+        )
+        console.print(panel)
+        console.print("")
+
 def main():
     parser = argparse.ArgumentParser(description="AI Code Review Assistant (Ollama Only)")
     parser.add_argument("--config", default="review_config.yaml", help="Path to config file")
@@ -42,6 +201,8 @@ def main():
     parser.add_argument("--apply-fixes", action="store_true", help="Apply AI suggested fixes")
     parser.add_argument("--format", choices=["md", "json", "sarif"], action="append",
                         help="Output formats")
+    parser.add_argument("--display", choices=["compact", "detailed", "summary"], 
+                       default="detailed", help="Output display mode")
     args = parser.parse_args()
 
     cfg = load_yaml(args.config) if os.path.exists(args.config) else {}
@@ -50,28 +211,74 @@ def main():
 
     # Backend fixed to Ollama
     backend = "ollama"
-    print(f"🤖 AI Code Review Assistant [OLLAMA]")
+    
+    # Show beautiful startup banner
+    show_startup_banner(cfg, rules, formats)
 
-    diff = get_staged_diff(unified_context=0)
+    # Get staged changes with progress
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[bold blue]Analyzing staged changes..."),
+        console=console
+    ) as progress:
+        progress.add_task("Getting diff", total=None)
+        diff = get_staged_diff(unified_context=0)
+    
     if not diff.strip():
-        print("No staged changes found.")
+        console.print(Panel(
+            "[bold yellow]⚠️  No staged changes found[/bold yellow]\n[dim]Use 'git add' to stage files for review[/dim]",
+            border_style="yellow",
+            box=box.ROUNDED
+        ))
         return 0
 
     hunks = split_into_hunks(diff)
     tracker = CostTracker()
+    
+    # Show changed files tree
+    show_changes_tree(hunks)
 
     key = cache_key(diff + backend)
     cache_file = CACHE_DIR / f"{key}.json"
+    
     if cache_file.exists():
+        console.print("[dim]📋 Using cached analysis...[/dim]")
         report = json.loads(cache_file.read_text())
     else:
-        report = review_hunks(hunks, rules, max_findings=50)
+        # AI analysis with progress
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold green]🤖 Running AI analysis..."),
+            BarColumn(),
+            console=console
+        ) as progress:
+            ai_task = progress.add_task("AI Review", total=100)
+            progress.update(ai_task, advance=30)
+            
+            report = review_hunks(hunks, rules, max_findings=50)
+            progress.update(ai_task, advance=100)
+            
         cache_file.write_text(json.dumps(report, indent=2))
 
-    # Linters
-    ruff = run_ruff()
-    bandit = run_bandit()
-    mypy = run_mypy()
+    # Static analysis with progress
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[bold cyan]🔍 Running static analysis..."),
+        console=console
+    ) as progress:
+        linter_task = progress.add_task("Linters", total=3)
+        
+        progress.update(linter_task, description="[bold cyan]Running Ruff...[/bold cyan]")
+        ruff = run_ruff()
+        progress.advance(linter_task)
+        
+        progress.update(linter_task, description="[bold cyan]Running Bandit...[/bold cyan]")
+        bandit = run_bandit()
+        progress.advance(linter_task)
+        
+        progress.update(linter_task, description="[bold cyan]Running MyPy...[/bold cyan]")
+        mypy = run_mypy()
+        progress.advance(linter_task)
 
     findings = report.get("findings", [])
     for item in ruff:
@@ -107,17 +314,33 @@ def main():
     # Apply auto-fix patches if enabled
     applied = 0
     if args.apply_fixes or cfg.get("enable_autofix", False):
-        for f in findings:
-            patch = f.get("auto_fix_patch")
-            if patch and apply_unified_patch(patch):
-                applied += 1
-        if applied:
-            print(f"🛠  Applied {applied} auto-fix patches and staged them.")
+        fixable_patches = [f for f in findings if f.get("auto_fix_patch")]
+        if fixable_patches:
+            console.print(f"\n[bold yellow]🛠️  Found {len(fixable_patches)} auto-fixable issues[/bold yellow]")
+            
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[bold green]Applying fixes..."),
+                BarColumn(),
+                console=console
+            ) as progress:
+                fix_task = progress.add_task("Fixes", total=len(fixable_patches))
+                
+                for f in fixable_patches:
+                    patch = f.get("auto_fix_patch")
+                    if patch and apply_unified_patch(patch):
+                        applied += 1
+                    progress.advance(fix_task)
+            
+            if applied:
+                console.print(f"[bold green]✅ Applied {applied} auto-fix patches and staged them![/bold green]")
 
     # --- Output files ---
+    console.print("\n[bold blue]📁 Generating Reports[/bold blue]")
+    
     if "json" in formats:
         Path("ai_review.json").write_text(json.dumps(out, indent=2))
-        print("💾 Wrote ai_review.json")
+        console.print("[bold green]💾 Wrote[/bold green] [cyan]ai_review.json[/cyan]")
 
     if "md" in formats:
         md = ["# AI Review Report\n", f"**Effort**: {out['effort']}\n"]
@@ -132,24 +355,27 @@ def main():
                       f"  - {f['description']}\n"
                       f"  - **Fix**: {f['recommendation']}\n")
         Path("AI_REVIEW.md").write_text("\n".join(md))
-        print("💾 Wrote AI_REVIEW.md")
+        console.print("[bold green]💾 Wrote[/bold green] [cyan]AI_REVIEW.md[/cyan]")
 
-    # --- Concise summary ---
-    if out.get("findings"):
-        print("\n=== 💬 AI Review Summary ===\n")
-        for f in out["findings"]:
-            sev = f.get("severity", "info").upper()
-            rule = f.get("rule", "GEN")
-            file = f.get("file", "?")
-            line = f.get("line", "?")
-            title = f.get("title", "")
-            rec = f.get("recommendation", "")
-            print(f"• {sev} [{rule}] {file}:{line} — {title}")
-            if rec:
-                print(f"  ↳ {rec}")
-        print("\n=============================\n")
-    else:
-        print("✅ No significant findings detected.")
+    # Display results based on chosen mode
+    console.print("\n")
+    
+    if args.display == "summary":
+        display_review_summary(findings, out.get("summary"), out.get("effort", "S"))
+    elif args.display == "detailed":
+        display_review_summary(findings, out.get("summary"), out.get("effort", "S"))
+        display_detailed_findings(findings)
+    elif args.display == "compact":
+        # Compact mode - one line per finding
+        if findings:
+            console.print("[bold magenta]📋 Quick Summary[/bold magenta]")
+            for f in findings:
+                severity = f.get("severity", "info").upper()
+                icons = {"ERROR": "🚨", "WARN": "⚠️", "INFO": "ℹ️"}
+                icon = icons.get(severity, "📌")
+                console.print(f"{icon} {f.get('file')}:{f.get('line')} - {f.get('title')}")
+        else:
+            console.print("[bold green]✅ No issues found![/bold green]")
 
     if "sarif" in formats:
         sarif = {
@@ -170,18 +396,29 @@ def main():
             }]
         }
         Path("ai_review.sarif").write_text(json.dumps(sarif, indent=2))
-        print("💾 Wrote ai_review.sarif")
+        console.print("[bold green]💾 Wrote[/bold green] [cyan]ai_review.sarif[/cyan]")
     
-    if Path("AI_REVIEW.md").exists():
-        print("\n=== 💬 AI Review Feedback Summary ===\n")
+    # Additional summary from markdown file (legacy compatibility)
+    if Path("AI_REVIEW.md").exists() and args.display == "summary":
+        console.print("\n[bold blue]📄 Report Summary[/bold blue]")
         lines = Path("AI_REVIEW.md").read_text().splitlines()
         for line in lines:
             if line.strip().startswith("- **"):
-                print(line)
-        print("\n📄 Full report saved to AI_REVIEW.md\n")
+                console.print(f"[dim]{line}[/dim]")
+        console.print("[dim]Full report saved to AI_REVIEW.md[/dim]\n")
 
+    # Performance summary
     stats = tracker.summary()
-    print(f"⏱  Done. Elapsed≈{stats['elapsed_sec']}s")
+    
+    perf_panel = Panel(
+        f"[bold green]⏱️  Analysis completed in {stats['elapsed_sec']}s[/bold green]\n"
+        f"[dim]Characters processed: {stats['chars_in']} in, {stats['chars_out']} out[/dim]",
+        title="[bold]📊 Performance[/bold]",
+        border_style="green",
+        box=box.ROUNDED
+    )
+    console.print(perf_panel)
+    
     return 0
 
 if __name__ == "__main__":

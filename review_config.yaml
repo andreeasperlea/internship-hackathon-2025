@@ -6,4 +6,4 @@ severity_threshold: info   # info | warn | error
 enable_autofix: true
 formats: [md, json]        # md | json | sarif
 use_only_staged: true
-ollama_url: http://192.168.0.112:11434/api/generate
+ollama_url: http://localhost:11434/api/generate
