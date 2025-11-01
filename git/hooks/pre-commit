@@ -1,0 +1,7 @@
+
+python3 cli.py
+RESULT=$?
+if [ $RESULT -ne 0 ]; then
+  echo "Pre-commit review failed or aborted."
+  exit 1
+fi
