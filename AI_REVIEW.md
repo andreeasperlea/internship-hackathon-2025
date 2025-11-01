@@ -2,7 +2,7 @@
 
 **Effort**: S
 
-> Newly added code review
+> SEC-BANDIT and PEP8 issues found
 
 ## Findings
 
