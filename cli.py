@@ -49,22 +49,36 @@ def load_yaml(p):
     with open(p) as f:
         return yaml.safe_load(f)
 
-def show_startup_banner(cfg, rules, formats):
+def show_startup_banner(cfg, rules, formats, args=None):
     """Display beautiful startup information"""
     console.print("\n")
     console.print(Panel(
         Text("🤖 RevAI - AI Code Review Assistant", style="bold blue", justify="center"),
-        subtitle="[dim]Powered by Ollama LLM[/dim]",
+        subtitle="[dim]Powered by Ollama LLM • See USER_MANUAL.md for full documentation[/dim]",
         border_style="blue",
         box=box.ROUNDED
     ))
+    
+    # Determine actual autofix status (CLI args override config)
+    autofix_enabled = cfg.get('enable_autofix', False)
+    autofix_source = "config"
+    
+    if args:
+        if args.apply_fixes:
+            autofix_enabled = True
+            autofix_source = "--apply-fixes"
+        elif args.no_apply_fixes:
+            autofix_enabled = False
+            autofix_source = "--no-apply-fixes"
+    
+    autofix_status = f"[{'green]Enabled' if autofix_enabled else 'red]Disabled'}[/] [dim]({autofix_source})[/dim]"
     
     # Configuration panel
     config_info = [
         f"[bold green]✓[/bold green] Model: [cyan]{cfg.get('model_ollama', 'llama3.1:8b')}[/cyan]",
         f"[bold green]✓[/bold green] Rules: [yellow]{len(rules)}[/yellow] guidelines loaded",
         f"[bold green]✓[/bold green] Formats: [magenta]{', '.join(formats)}[/magenta]",
-        f"[bold green]✓[/bold green] Auto-fix: [{'green]Enabled' if cfg.get('enable_autofix') else 'red]Disabled'}[/]"
+        f"[bold green]✓[/bold green] Auto-fix: {autofix_status}"
     ]
     
     config_panel = Panel(
@@ -198,7 +212,10 @@ def main():
     parser = argparse.ArgumentParser(description="AI Code Review Assistant (Ollama Only)")
     parser.add_argument("--config", default="review_config.yaml", help="Path to config file")
     parser.add_argument("--rules", default="rules.yaml", help="Path to rules file")
-    parser.add_argument("--apply-fixes", action="store_true", help="Apply AI suggested fixes")
+    parser.add_argument("--apply-fixes", action="store_true", 
+                        help="Enable automatic application of AI suggested fixes (overrides config)")
+    parser.add_argument("--no-apply-fixes", action="store_true", 
+                        help="Disable automatic fixes (overrides config)")
     parser.add_argument("--format", choices=["md", "json", "sarif"], action="append",
                         help="Output formats")
     parser.add_argument("--display", choices=["compact", "detailed", "summary"], 
@@ -213,7 +230,7 @@ def main():
     backend = "ollama"
     
     # Show beautiful startup banner
-    show_startup_banner(cfg, rules, formats)
+    show_startup_banner(cfg, rules, formats, args)
 
     # Get staged changes with progress
     with Progress(
@@ -226,7 +243,10 @@ def main():
     
     if not diff.strip():
         console.print(Panel(
-            "[bold yellow]⚠️  No staged changes found[/bold yellow]\n[dim]Use 'git add' to stage files for review[/dim]",
+            "[bold yellow]⚠️  No staged changes found[/bold yellow]\n"
+            "[dim]• Use 'git add <files>' to stage files for review[/dim]\n"
+            "[dim]• See COMMANDS.md for quick reference[/dim]\n"
+            "[dim]• Run 'python cli.py --help' for all options[/dim]",
             border_style="yellow",
             box=box.ROUNDED
         ))
@@ -311,12 +331,20 @@ def main():
         "mypy": mypy
     }
 
+    # Determine autofix setting (CLI args override config)
+    enable_autofix = cfg.get("enable_autofix", False)
+    if args.apply_fixes:
+        enable_autofix = True
+    elif args.no_apply_fixes:
+        enable_autofix = False
+    
     # Apply auto-fix patches if enabled
     applied = 0
-    if args.apply_fixes or cfg.get("enable_autofix", False):
+    if enable_autofix:
         fixable_patches = [f for f in findings if f.get("auto_fix_patch")]
         if fixable_patches:
             console.print(f"\n[bold yellow]🛠️  Found {len(fixable_patches)} auto-fixable issues[/bold yellow]")
+            console.print("[bold green]🤖 Auto-fix is ENABLED - applying fixes automatically...[/bold green]")
             
             with Progress(
                 SpinnerColumn(),
@@ -333,7 +361,15 @@ def main():
                     progress.advance(fix_task)
             
             if applied:
-                console.print(f"[bold green]✅ Applied {applied} auto-fix patches and staged them![/bold green]")
+                console.print(f"[bold green]✅ Applied {applied}/{len(fixable_patches)} auto-fix patches and staged them![/bold green]")
+            else:
+                console.print(f"[bold red]❌ No patches could be applied (may have conflicts)[/bold red]")
+    else:
+        # Show info about available fixes when autofix is disabled
+        fixable_patches = [f for f in findings if f.get("auto_fix_patch")]
+        if fixable_patches:
+            console.print(f"\n[bold blue]📝 Info: {len(fixable_patches)} auto-fixable issues found[/bold blue]")
+            console.print("[dim]Use --apply-fixes to automatically apply suggested fixes[/dim]")
 
     # --- Output files ---
     console.print("\n[bold blue]📁 Generating Reports[/bold blue]")

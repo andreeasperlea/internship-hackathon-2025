@@ -3,7 +3,12 @@ model_ollama: llama3.1:8b
 model_gpt: gpt-4o-mini
 max_findings: 50
 severity_threshold: info   # info | warn | error
-enable_autofix: true
+
+# Auto-fix configuration
+enable_autofix: false      # Default: disabled for safety
+                          # Use --apply-fixes to enable for single run
+                          # Use --no-apply-fixes to disable for single run
+
 formats: [md, json]        # md | json | sarif
 use_only_staged: true
 ollama_url: http://localhost:11434/api/generate
