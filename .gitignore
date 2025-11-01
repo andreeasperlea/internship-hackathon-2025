@@ -1,0 +1,8 @@
+
+echo "__pycache__/
+.ai_review_cache/
+*.pyc
+AI_REVIEW.md
+ai_review.json
+ai_review.sarif
+" > .gitignore

@@ -1,0 +1,8 @@
+backend: ollama            # ollama | gpt
+model_ollama: llama3.1:8b
+model_gpt: gpt-4o-mini
+max_findings: 50
+severity_threshold: info   # info | warn | error
+enable_autofix: true
+formats: [md, json]        # md | json | sarif
+use_only_staged: true

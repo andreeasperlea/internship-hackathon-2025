@@ -1,0 +1,7 @@
+guidelines:
+  - id: PEP8
+    description: Respectă PEP8 (naming, line length, imports).
+  - id: SEC-BANDIT
+    description: Evită riscuri comune (subprocess shell=True, eval, pickle).
+  - id: PERF
+    description: Evită bucle O(n^2) inutile și conversii costisitoare în hot paths.

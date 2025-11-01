@@ -1,48 +1,92 @@
-# review.py
 import os
 import requests
-from openai import OpenAI
+import json
 
-OLLAMA_API_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "llama3.1:8b"
-OPENAI_MODEL = "gpt-4o-mini"  # can be gpt-4-turbo or similar
+PROMPT_TEMPLATE = """You are an expert code reviewer.
+Analyze ONLY the newly added lines and their immediate context.
+Return STRICT JSON matching this schema:
 
-def ask_ollama(prompt: str, diff: str) -> str:
-    """Call local Ollama API."""
+{{
+  "summary": "short overview",
+  "effort": "XS|S|M|L",
+  "findings": [
+    {{
+      "file": "path/to/file.py",
+      "line": 123,
+      "rule": "PEP8|SEC|PERF|STYLE|DOCS|TESTS|ARCH",
+      "severity": "info|warn|error",
+      "title": "problem title",
+      "description": "why it's a problem",
+      "recommendation": "what to change",
+      "auto_fix_patch": "unified diff patch applying the fix (optional)"
+    }}
+  ]
+}}
+
+Guidelines: {guidelines}
+
+Now review the following DIFF HUNK:
+---
+{hunk}
+---
+IMPORTANT:
+- Output ONLY the JSON (no backticks, no prose).
+- Prefer adding 'auto_fix_patch' when safe.
+"""
+
+# === Ollama configuration ===
+OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "http://localhost:11434/api/generate")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
+
+def ask_ollama(prompt: str) -> str:
+    """Call the Ollama API (local or remote)."""
     payload = {
         "model": OLLAMA_MODEL,
-        "prompt": f"{prompt}\n\nHere is the git diff:\n{diff}",
-        "stream": False,
+        "prompt": prompt,
+        "stream": False
     }
     try:
-        resp = requests.post(OLLAMA_API_URL, json=payload, timeout=120)
+        resp = requests.post(OLLAMA_API_URL, json=payload, timeout=60)
         resp.raise_for_status()
-        return resp.json().get("response", "No response from model.")
+        data = resp.json()
+        return data.get("response") or data.get("text") or str(data)
+    except requests.exceptions.Timeout:
+        return "[ERROR] Ollama request timed out."
     except requests.exceptions.RequestException as e:
-        return f"[ERROR] Ollama API error: {e}"
+        return f"[ERROR] Ollama request failed: {e}"
 
-def ask_openai(prompt: str, diff: str) -> str:
-    """Call OpenAI GPT API."""
-    client = OpenAI()
-    full_prompt = f"{prompt}\n\nHere is the git diff:\n{diff}"
-    try:
-        resp = client.chat.completions.create(
-            model=OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": "You are an expert code reviewer."},
-                {"role": "user", "content": full_prompt},
-            ],
+def review_hunks(hunks, rules, max_findings=50):
+    """Send each diff hunk to Ollama for review."""
+    guidelines = "\n".join(f"- {r['id']}: {r['description']}" for r in rules)
+    all_findings = []
+    summaries, efforts = [], []
+
+    for h in hunks:
+        prompt = PROMPT_TEMPLATE.format(
+            guidelines=guidelines,
+            hunk="\n".join(h["raw"])
         )
-        return resp.choices[0].message.content.strip()
-    except Exception as e:
-        return f"[ERROR] OpenAI API error: {e}"
+        raw = ask_ollama(prompt).strip()
 
-def review_code(prompt: str, diff: str, backend: str = "ollama") -> str:
-    """Unified entrypoint for either backend."""
-    backend = backend.lower()
-    if backend == "gpt" or backend == "openai":
-        return ask_openai(prompt, diff)
-    elif backend == "ollama":
-        return ask_ollama(prompt, diff)
-    else:
-        return f"[ERROR] Unknown backend '{backend}'. Use 'ollama' or 'gpt'."
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            start, end = raw.find("{"), raw.rfind("}")
+            if start != -1 and end != -1:
+                data = json.loads(raw[start:end+1])
+            else:
+                data = {"summary": "parse_error", "findings": []}
+
+        summaries.append(data.get("summary", ""))
+        efforts.append(data.get("effort", "S"))
+        for f in data.get("findings", []):
+            f.setdefault("file", h["file"])
+            all_findings.append(f)
+        if len(all_findings) >= max_findings:
+            break
+
+    return {
+        "summary": " | ".join(x for x in summaries if x).strip(),
+        "effort": max(efforts, key=lambda e: "XS S M L".split().index(e)) if efforts else "S",
+        "findings": all_findings[:max_findings],
+    }

@@ -1,7 +1,9 @@
-
+#!/bin/bash
+echo "🔍 Running AI pre-commit review (Ollama)..."
 python3 cli.py
 RESULT=$?
 if [ $RESULT -ne 0 ]; then
-  echo "Pre-commit review failed or aborted."
+  echo "❌ Pre-commit review failed or aborted."
   exit 1
 fi
+echo "✅ Pre-commit review passed."
